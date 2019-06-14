@@ -58,18 +58,15 @@ options:
       uid:
         description:
           - UID of the config file's owner.
-        type: int
-        default: 0
+        type: str
       gid:
         description:
           - GID of the config file's group.
-        type: int
-        default: 0
+        type: str
       mode:
         description:
-          - File access mode inside the container.
-        type: str
-        default: "0o444"
+          - File access mode inside the container. Must be an octal number (like C(0644) or C(0444)).
+        type: int
   constraints:
     description:
       - List of the service constraints.
@@ -468,8 +465,9 @@ options:
   resolve_image:
     description:
       - If the current image digest should be resolved from registry and updated if changed.
+      - Requires API version >= 1.30.
     type: bool
-    default: yes
+    default: no
     version_added: 2.8
   restart_config:
     description:
@@ -613,21 +611,20 @@ options:
       uid:
         description:
           - UID of the secret file's owner.
-        type: int
-        default: 0
+        type: str
       gid:
         description:
           - GID of the secret file's group.
-        type: int
-        default: 0
+        type: str
       mode:
         description:
-          - File access mode inside the container.
+          - File access mode inside the container. Must be an octal number (like C(0644) or C(0444)).
         type: int
-        default: 0o444
   state:
     description:
-      - Service state.
+      - I(absent) - A service matching the specified name will be removed and have its tasks stopped.
+      - I(present) - Asserts the existence of a service matching the name and provided configuration parameters.
+        Unspecified configuration parameters will be set to docker defaults.
     type: str
     required: yes
     default: present
@@ -775,10 +772,10 @@ extends_documentation_fragment:
   - docker
   - docker.docker_py_2_documentation
 requirements:
-  - "docker >= 2.0.2"
+  - "L(Docker SDK for Python,https://docker-py.readthedocs.io/en/stable/) >= 2.0.2"
   - "Docker API >= 1.24"
 notes:
-  - "Images will only resolve to the latest digest when using Docker API >= 1.30 and docker-py >= 3.2.0.
+  - "Images will only resolve to the latest digest when using Docker API >= 1.30 and Docker SDK for Python >= 3.2.0.
      When using older versions use C(force_update: true) to trigger the swarm to resolve a new image."
 '''
 
@@ -1077,7 +1074,7 @@ try:
         NotFound,
     )
 except ImportError:
-    # missing docker-py handled in ansible.module_utils.docker.common
+    # missing Docker SDK for Python handled in ansible.module_utils.docker.common
     pass
 
 
@@ -1145,6 +1142,42 @@ def get_nanoseconds_from_raw_option(name, value):
 def get_value(key, values, default=None):
     value = values.get(key)
     return value if value is not None else default
+
+
+def has_dict_changed(new_dict, old_dict):
+    """
+    Check if new_dict has differences compared to old_dict while
+    ignoring keys in old_dict which are None in new_dict.
+    """
+    if new_dict is None:
+        return False
+    if not new_dict and old_dict:
+        return True
+    if not old_dict and new_dict:
+        return True
+    defined_options = dict(
+        (option, value) for option, value in new_dict.items()
+        if value is not None
+    )
+    for option, value in defined_options.items():
+        if value != old_dict.get(option):
+            return True
+    return False
+
+
+def has_list_of_dicts_changed(new_list, old_list):
+    """
+    Check two lists of dicts has differences.
+    """
+    if new_list is None:
+        return False
+    old_list = old_list or []
+    if len(new_list) != len(old_list):
+        return True
+    for new_item, old_item in zip(new_list, old_list):
+        if has_dict_changed(new_item, old_item):
+            return True
+    return False
 
 
 class DockerService(DockerBaseClass):
@@ -1619,11 +1652,11 @@ class DockerService(DockerBaseClass):
         if self.mode != os.mode:
             needs_rebuild = True
             differences.add('mode', parameter=self.mode, active=os.mode)
-        if self.mounts is not None and self.mounts != (os.mounts or []):
+        if has_list_of_dicts_changed(self.mounts, os.mounts):
             differences.add('mounts', parameter=self.mounts, active=os.mounts)
-        if self.configs is not None and self.configs != (os.configs or []):
+        if has_list_of_dicts_changed(self.configs, os.configs):
             differences.add('configs', parameter=self.configs, active=os.configs)
-        if self.secrets is not None and self.secrets != (os.secrets or []):
+        if has_list_of_dicts_changed(self.secrets, os.secrets):
             differences.add('secrets', parameter=self.secrets, active=os.secrets)
         if self.networks is not None and self.networks != (os.networks or []):
             differences.add('networks', parameter=self.networks, active=os.networks)
@@ -1668,7 +1701,7 @@ class DockerService(DockerBaseClass):
             differences.add('restart_policy_delay', parameter=self.restart_policy_delay, active=os.restart_policy_delay)
         if self.restart_policy_window is not None and self.restart_policy_window != os.restart_policy_window:
             differences.add('restart_policy_window', parameter=self.restart_policy_window, active=os.restart_policy_window)
-        if self.rollback_config is not None and self.has_rollback_config_changed(os.rollback_config):
+        if has_dict_changed(self.rollback_config, os.rollback_config):
             differences.add('rollback_config', parameter=self.rollback_config, active=os.rollback_config)
         if self.update_delay is not None and self.update_delay != os.update_delay:
             differences.add('update_delay', parameter=self.update_delay, active=os.update_delay)
@@ -1743,18 +1776,6 @@ class DockerService(DockerBaseClass):
             old_image = old_image.split('@')[0]
         return self.image != old_image, old_image
 
-    def has_rollback_config_changed(self, old_rollback_config):
-        if old_rollback_config is None and self.rollback_config:
-            return True
-        defined_options = dict(
-            (option, value) for option, value in self.rollback_config.items()
-            if value is not None
-        )
-        for option, value in defined_options.items():
-            if value != old_rollback_config.get(option):
-                return True
-        return False
-
     def __str__(self):
         return str({
             'mode': self.mode,
@@ -1796,31 +1817,47 @@ class DockerService(DockerBaseClass):
         if self.configs is not None:
             configs = []
             for config_config in self.configs:
-                configs.append(
-                    types.ConfigReference(
-                        config_id=config_config['config_id'],
-                        config_name=config_config['config_name'],
-                        filename=config_config.get('filename'),
-                        uid=config_config.get('uid'),
-                        gid=config_config.get('gid'),
-                        mode=config_config.get('mode')
-                    )
-                )
+                config_args = {
+                    'config_id': config_config['config_id'],
+                    'config_name': config_config['config_name']
+                }
+                filename = config_config.get('filename')
+                if filename:
+                    config_args['filename'] = filename
+                uid = config_config.get('uid')
+                if uid:
+                    config_args['uid'] = uid
+                gid = config_config.get('gid')
+                if gid:
+                    config_args['gid'] = gid
+                mode = config_config.get('mode')
+                if mode:
+                    config_args['mode'] = mode
+
+                configs.append(types.ConfigReference(**config_args))
 
         secrets = None
         if self.secrets is not None:
             secrets = []
             for secret_config in self.secrets:
-                secrets.append(
-                    types.SecretReference(
-                        secret_id=secret_config['secret_id'],
-                        secret_name=secret_config['secret_name'],
-                        filename=secret_config.get('filename'),
-                        uid=secret_config.get('uid'),
-                        gid=secret_config.get('gid'),
-                        mode=secret_config.get('mode')
-                    )
-                )
+                secret_args = {
+                    'secret_id': secret_config['secret_id'],
+                    'secret_name': secret_config['secret_name']
+                }
+                filename = secret_config.get('filename')
+                if filename:
+                    secret_args['filename'] = filename
+                uid = secret_config.get('uid')
+                if uid:
+                    secret_args['uid'] = uid
+                gid = secret_config.get('gid')
+                if gid:
+                    secret_args['gid'] = gid
+                mode = secret_config.get('mode')
+                if mode:
+                    secret_args['mode'] = mode
+
+                secrets.append(types.SecretReference(**secret_args))
 
         dns_config_args = {}
         if self.dns is not None:
@@ -1996,14 +2033,14 @@ class DockerService(DockerBaseClass):
             ports = {}
             for port in self.publish:
                 if port.get('mode'):
-                    ports[int(port['published_port'])] = (
-                        int(port['target_port']),
+                    ports[port['published_port']] = (
+                        port['target_port'],
                         port['protocol'],
                         port['mode'],
                     )
                 else:
-                    ports[int(port['published_port'])] = (
-                        int(port['target_port']),
+                    ports[port['published_port']] = (
+                        port['target_port'],
                         port['protocol'],
                     )
             endpoint_spec_args['ports'] = ports
@@ -2213,8 +2250,8 @@ class DockerServiceManager(object):
                     'config_id': config_data['ConfigID'],
                     'config_name': config_data['ConfigName'],
                     'filename': config_data['File'].get('Name'),
-                    'uid': int(config_data['File'].get('UID')),
-                    'gid': int(config_data['File'].get('GID')),
+                    'uid': config_data['File'].get('UID'),
+                    'gid': config_data['File'].get('GID'),
                     'mode': config_data['File'].get('Mode')
                 })
 
@@ -2226,8 +2263,8 @@ class DockerServiceManager(object):
                     'secret_id': secret_data['SecretID'],
                     'secret_name': secret_data['SecretName'],
                     'filename': secret_data['File'].get('Name'),
-                    'uid': int(secret_data['File'].get('UID')),
-                    'gid': int(secret_data['File'].get('GID')),
+                    'uid': secret_data['File'].get('UID'),
+                    'gid': secret_data['File'].get('GID'),
                     'mode': secret_data['File'].get('Mode')
                 })
 
@@ -2249,14 +2286,15 @@ class DockerServiceManager(object):
 
     def update_service(self, name, old_service, new_service):
         service_data = new_service.build_docker_service(self.get_networks_names_ids())
-        self.client.update_service(
+        result = self.client.update_service(
             old_service.service_id,
             old_service.service_version,
             name=name,
             **service_data
         )
-        # Unfortunately, docker-py f***ed up and doesn't return the structure
-        # the corresponding API call returns, which would include a list of warnings.
+        # Prior to Docker SDK 4.0.0 no warnings were returned and will thus be ignored.
+        # (see https://github.com/docker/docker-py/pull/2272)
+        self.client.report_warnings(result, ['Warning'])
 
     def create_service(self, name, service):
         service_data = service.build_docker_service(self.get_networks_names_ids())
@@ -2266,12 +2304,10 @@ class DockerServiceManager(object):
     def remove_service(self, name):
         self.client.remove_service(name)
 
-    def get_image_digest(self, name, resolve=True):
+    def get_image_digest(self, name, resolve=False):
         if (
             not name
             or not resolve
-            or self.client.docker_py_version < LooseVersion('3.2')
-            or self.client.docker_api_version < LooseVersion('1.30')
         ):
             return name
         repo, tag = parse_repository_tag(name)
@@ -2470,17 +2506,17 @@ def main():
             config_id=dict(type='str', required=True),
             config_name=dict(type='str', required=True),
             filename=dict(type='str'),
-            uid=dict(type='int', default=0),
-            gid=dict(type='int', default=0),
-            mode=dict(type='int', default=0o444),
+            uid=dict(type='str'),
+            gid=dict(type='str'),
+            mode=dict(type='int'),
         )),
         secrets=dict(type='list', elements='dict', options=dict(
             secret_id=dict(type='str', required=True),
             secret_name=dict(type='str', required=True),
             filename=dict(type='str'),
-            uid=dict(type='int', default=0),
-            gid=dict(type='int', default=0),
-            mode=dict(type='int', default=0o444),
+            uid=dict(type='str'),
+            gid=dict(type='str'),
+            mode=dict(type='int'),
         )),
         networks=dict(type='list', elements='str'),
         command=dict(type='raw'),
@@ -2543,7 +2579,7 @@ def main():
         )),
         reserve_cpu=dict(type='float', removed_in_version='2.12'),
         reserve_memory=dict(type='str', removed_in_version='2.12'),
-        resolve_image=dict(type='bool', default=True),
+        resolve_image=dict(type='bool', default=False),
         restart_config=dict(type='dict', options=dict(
             condition=dict(type='str', choices=['none', 'on-failure', 'any']),
             delay=dict(type='str'),
@@ -2618,6 +2654,7 @@ def main():
         stop_signal=dict(docker_py_version='2.6.0', docker_api_version='1.28'),
         publish=dict(docker_py_version='3.0.0', docker_api_version='1.25'),
         read_only=dict(docker_py_version='2.6.0', docker_api_version='1.28'),
+        resolve_image=dict(docker_api_version='1.30', docker_py_version='3.2.0'),
         rollback_config=dict(docker_py_version='3.5.0', docker_api_version='1.28'),
         # specials
         publish_mode=dict(
@@ -2690,7 +2727,6 @@ def main():
             usage_msg='set rollback_config.order'
         ),
     )
-
     required_if = [
         ('state', 'present', ['image'])
     ]

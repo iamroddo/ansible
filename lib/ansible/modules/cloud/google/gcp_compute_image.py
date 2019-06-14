@@ -91,9 +91,8 @@ options:
           For newer Windows images, the server might also populate this property with
           the value WINDOWS to indicate that this is a Windows image. This value is
           purely informational and does not enable or disable any features.
+        - 'Some valid choices include: "VIRTIO_SCSI_MULTIQUEUE"'
         required: false
-        choices:
-        - VIRTIO_SCSI_MULTIQUEUE
   image_encryption_key:
     description:
     - Encrypts the image using a customer-supplied encryption key.
@@ -134,9 +133,8 @@ options:
         - The format used to encode and transmit the block device, which should be
           TAR. This is just a container and transmission format and not a runtime
           format. Provided by the client when the disk image is created.
+        - 'Some valid choices include: "TAR"'
         required: false
-        choices:
-        - TAR
       sha1_checksum:
         description:
         - An optional SHA1 checksum of the disk image before unpackaging.
@@ -153,9 +151,10 @@ options:
     - You must provide either this property or the rawDisk.source property but not
       both to create an image.
     - 'This field represents a link to a Disk resource in GCP. It can be specified
-      in two ways. First, you can place in the selfLink of the resource here as a
-      string Alternatively, you can add `register: name-of-resource` to a gcp_compute_disk
-      task and then set this source_disk field to "{{ name-of-resource }}"'
+      in two ways. First, you can place a dictionary with key ''selfLink'' and value
+      of your resource''s selfLink Alternatively, you can add `register: name-of-resource`
+      to a gcp_compute_disk task and then set this source_disk field to "{{ name-of-resource
+      }}"'
     required: false
   source_disk_encryption_key:
     description:
@@ -178,9 +177,8 @@ options:
     description:
     - The type of the image used to create this disk. The default and only value is
       RAW .
+    - 'Some valid choices include: "RAW"'
     required: false
-    choices:
-    - RAW
 extends_documentation_fragment: gcp
 notes:
 - 'API Reference: U(https://cloud.google.com/compute/docs/reference/v1/images)'
@@ -384,7 +382,7 @@ sourceDisk:
   - You must provide either this property or the rawDisk.source property but not both
     to create an image.
   returned: success
-  type: str
+  type: dict
 sourceDiskEncryptionKey:
   description:
   - The customer-supplied encryption key of the source disk. Required if the source
@@ -442,19 +440,16 @@ def main():
             description=dict(type='str'),
             disk_size_gb=dict(type='int'),
             family=dict(type='str'),
-            guest_os_features=dict(type='list', elements='dict', options=dict(type=dict(type='str', choices=['VIRTIO_SCSI_MULTIQUEUE']))),
+            guest_os_features=dict(type='list', elements='dict', options=dict(type=dict(type='str'))),
             image_encryption_key=dict(type='dict', options=dict(raw_key=dict(type='str'))),
             labels=dict(type='dict'),
             licenses=dict(type='list', elements='str'),
             name=dict(required=True, type='str'),
-            raw_disk=dict(
-                type='dict',
-                options=dict(container_type=dict(type='str', choices=['TAR']), sha1_checksum=dict(type='str'), source=dict(required=True, type='str')),
-            ),
-            source_disk=dict(),
+            raw_disk=dict(type='dict', options=dict(container_type=dict(type='str'), sha1_checksum=dict(type='str'), source=dict(required=True, type='str'))),
+            source_disk=dict(type='dict'),
             source_disk_encryption_key=dict(type='dict', options=dict(raw_key=dict(type='str'))),
             source_disk_id=dict(type='str'),
-            source_type=dict(type='str', choices=['RAW']),
+            source_type=dict(type='str'),
         )
     )
 
@@ -622,7 +617,7 @@ def response_to_hash(module, response):
 def license_selflink(name, params):
     if name is None:
         return
-    url = r"https://www.googleapis.com/compute/v1//projects/.*/global/licenses/[a-z1-9\-]*"
+    url = r"https://www.googleapis.com/compute/v1//projects/.*/global/licenses/.*"
     if not re.match(url, name):
         name = "https://www.googleapis.com/compute/v1//projects/{project}/global/licenses/%s".format(**params) % name
     return name
@@ -730,10 +725,10 @@ class ImageImageencryptionkey(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key'), u'sha256': self.request.get('sha256')})
+        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key')})
 
     def from_response(self):
-        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey'), u'sha256': self.request.get(u'sha256')})
+        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey')})
 
 
 class ImageRawdisk(object):
@@ -764,10 +759,10 @@ class ImageSourcediskencryptionkey(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key'), u'sha256': self.request.get('sha256')})
+        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key')})
 
     def from_response(self):
-        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey'), u'sha256': self.request.get(u'sha256')})
+        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey')})
 
 
 if __name__ == '__main__':

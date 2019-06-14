@@ -63,9 +63,10 @@ options:
     description:
     - A reference to the network to which this router belongs.
     - 'This field represents a link to a Network resource in GCP. It can be specified
-      in two ways. First, you can place in the selfLink of the resource here as a
-      string Alternatively, you can add `register: name-of-resource` to a gcp_compute_network
-      task and then set this network field to "{{ name-of-resource }}"'
+      in two ways. First, you can place a dictionary with key ''selfLink'' and value
+      of your resource''s selfLink Alternatively, you can add `register: name-of-resource`
+      to a gcp_compute_network task and then set this network field to "{{ name-of-resource
+      }}"'
     required: true
   bgp:
     description:
@@ -82,11 +83,9 @@ options:
         description:
         - User-specified flag to indicate which mode to use for advertisement.
         - 'Valid values of this enum field are: DEFAULT, CUSTOM .'
+        - 'Some valid choices include: "DEFAULT", "CUSTOM"'
         required: false
         default: DEFAULT
-        choices:
-        - DEFAULT
-        - CUSTOM
       advertised_groups:
         description:
         - User-specified list of prefix groups to advertise in custom mode.
@@ -181,7 +180,7 @@ network:
   description:
   - A reference to the network to which this router belongs.
   returned: success
-  type: str
+  type: dict
 bgp:
   description:
   - BGP information specific to this router.
@@ -258,12 +257,12 @@ def main():
             state=dict(default='present', choices=['present', 'absent'], type='str'),
             name=dict(required=True, type='str'),
             description=dict(type='str'),
-            network=dict(required=True),
+            network=dict(required=True, type='dict'),
             bgp=dict(
                 type='dict',
                 options=dict(
                     asn=dict(required=True, type='int'),
-                    advertise_mode=dict(default='DEFAULT', type='str', choices=['DEFAULT', 'CUSTOM']),
+                    advertise_mode=dict(default='DEFAULT', type='str'),
                     advertised_groups=dict(type='list', elements='str'),
                     advertised_ip_ranges=dict(type='list', elements='dict', options=dict(range=dict(type='str'), description=dict(type='str'))),
                 ),

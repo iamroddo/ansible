@@ -19,36 +19,43 @@ short_description: Manage hosts on Pure Storage FlashArrays
 description:
 - Create, delete or modify hosts on Pure Storage FlashArrays.
 author:
-- Simon Dodsley (@sdodsley)
+- Pure Storage Ansible Team (@sdodsley) <pure-ansible-team@purestorage.com>
 notes:
 - If specifying C(lun) option ensure host support requested value
 options:
   host:
     description:
     - The name of the host.
+    type: str
     required: true
   state:
     description:
     - Define whether the host should exist or not.
     - When removing host all connected volumes will be disconnected.
+    type: str
     default: present
     choices: [ absent, present ]
   protocol:
     description:
     - Defines the host connection protocol for volumes.
+    type: str
     default: iscsi
     choices: [ fc, iscsi, nvme, mixed ]
   wwns:
+    type: list
     description:
     - List of wwns of the host if protocol is fc or mixed.
   iqn:
+    type: list
     description:
     - List of IQNs of the host if protocol is iscsi or mixed.
   nqn:
+    type: list
     description:
     - List of NQNs of the host if protocol is nvme or mixed.
     version_added: '2.8'
   volume:
+    type: str
     description:
     - Volume name to map to the host.
   lun:
@@ -56,10 +63,12 @@ options:
     - LUN ID to assign to volume for host. Must be unique.
     - If not provided the ID will be automatically assigned.
     - Range for LUN ID is 1 to 4095.
+    type: int
     version_added: '2.8'
   personality:
+    type: str
     description:
-    - Define which operating system the host is. Recommend for
+    - Define which operating system the host is. Recommended for
       ActiveCluster integration.
     default: ''
     choices: ['hpux', 'vms', 'aix', 'esxi', 'solaris', 'hitachi-vsp', 'oracle-vm-server', 'delete', '']
@@ -177,29 +186,41 @@ def _set_host_initiators(module, array):
                 module.fail_json(msg='Setting of FC WWNs failed.')
 
 
-def _update_host_initiators(module, array):
+def _update_host_initiators(module, array, answer=False):
     """Change host initiator if iscsi or nvme or add new FC WWNs"""
     if module.params['protocol'] in ['nvme', 'mixed']:
         if module.params['nqn']:
-            try:
-                array.set_host(module.params['host'],
-                               nqnlist=module.params['nqn'])
-            except Exception:
-                module.fail_json(msg='Change of NVMe NQN failed.')
+            current_nqn = array.get_host(module.params['host'])['nqn']
+            if current_nqn != module.params['nqn']:
+                try:
+                    array.set_host(module.params['host'],
+                                   nqnlist=module.params['nqn'])
+                    answer = True
+                except Exception:
+                    module.fail_json(msg='Change of NVMe NQN failed.')
     if module.params['protocol'] in ['iscsi', 'mixed']:
         if module.params['iqn']:
-            try:
-                array.set_host(module.params['host'],
-                               iqnlist=module.params['iqn'])
-            except Exception:
-                module.fail_json(msg='Change of iSCSI IQN failed.')
+            current_iqn = array.get_host(module.params['host'])['iqn']
+            if current_iqn != module.params['iqn']:
+                try:
+                    array.set_host(module.params['host'],
+                                   iqnlist=module.params['iqn'])
+                    answer = True
+                except Exception:
+                    module.fail_json(msg='Change of iSCSI IQN failed.')
     if module.params['protocol'] in ['fc', 'mixed']:
         if module.params['wwns']:
-            try:
-                array.set_host(module.params['host'],
-                               addwwnlist=module.params['wwns'])
-            except Exception:
-                module.fail_json(msg='FC WWN additiona failed.')
+            module.params['wwns'] = [wwn.replace(':', '') for wwn in module.params['wwns']]
+            module.params['wwns'] = [wwn.upper() for wwn in module.params['wwns']]
+            current_wwn = array.get_host(module.params['host'])['wwn']
+            if current_wwn != module.params['wwns']:
+                try:
+                    array.set_host(module.params['host'],
+                                   wwnlist=module.params['wwns'])
+                    answer = True
+                except Exception:
+                    module.fail_json(msg='FC WWN change failed.')
+    return answer
 
 
 def _connect_new_volume(module, array, answer=False):
@@ -232,17 +253,26 @@ def _update_host_personality(module, array, answer=False):
     """Change host personality. Only called when supported"""
     personality = array.get_host(module.params['host'], personality=True)['personality']
     if personality is None and module.params['personality'] != 'delete':
-        array.set_host(module.params['host'],
-                       personality=module.params['personality'])
-        answer = True
-    if personality is not None:
-        if module.params['personality'] == 'delete':
-            array.set_host(module.params['host'], personality='')
-            answer = True
-        elif personality != module.params['personality']:
+        try:
             array.set_host(module.params['host'],
                            personality=module.params['personality'])
             answer = True
+        except Exception:
+            module.fail_json(msg='Personality setting failed.')
+    if personality is not None:
+        if module.params['personality'] == 'delete':
+            try:
+                array.set_host(module.params['host'], personality='')
+                answer = True
+            except Exception:
+                module.fail_json(msg='Personality deletion failed.')
+        elif personality != module.params['personality']:
+            try:
+                array.set_host(module.params['host'],
+                               personality=module.params['personality'])
+                answer = True
+            except Exception:
+                module.fail_json(msg='Personality change failed.')
     return answer
 
 
@@ -282,9 +312,8 @@ def make_host(module, array):
 def update_host(module, array):
     changed = False
     volumes = array.list_host_connections(module.params['host'])
-    if module.params['iqn'] or module.params['wwns']:
-        _update_host_initiators(module, array)
-        changed = True
+    if module.params['iqn'] or module.params['wwns'] or module.params['nqn']:
+        changed = _update_host_initiators(module, array)
     if module.params['volume']:
         current_vols = [vol['vol'] for vol in volumes]
         if not module.params['volume'] in current_vols:

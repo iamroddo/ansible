@@ -180,18 +180,14 @@ options:
               either SCSI or NVME. The default is SCSI.
             - Persistent disks must always use SCSI and the request will fail if you
               attempt to attach a persistent disk in any other format than SCSI.
+            - 'Some valid choices include: "SCSI", "NVME"'
             required: false
-            choices:
-            - SCSI
-            - NVME
           mode:
             description:
             - The mode in which to attach this disk, either READ_WRITE or READ_ONLY.
               If not specified, the default is to attach the disk in READ_WRITE mode.
+            - 'Some valid choices include: "READ_WRITE", "READ_ONLY"'
             required: false
-            choices:
-            - READ_WRITE
-            - READ_ONLY
           source:
             description:
             - Reference to a disk. When creating a new instance, one of initializeParams.sourceImage
@@ -201,19 +197,17 @@ options:
             - Note that for InstanceTemplate, specify the disk name, not the URL for
               the disk.
             - 'This field represents a link to a Disk resource in GCP. It can be specified
-              in two ways. First, you can place in the name of the resource here as
-              a string Alternatively, you can add `register: name-of-resource` to
-              a gcp_compute_disk task and then set this source field to "{{ name-of-resource
-              }}"'
+              in two ways. First, you can place a dictionary with key ''name'' and
+              value of your resource''s name Alternatively, you can add `register:
+              name-of-resource` to a gcp_compute_disk task and then set this source
+              field to "{{ name-of-resource }}"'
             required: false
           type:
             description:
             - Specifies the type of the disk, either SCRATCH or PERSISTENT. If not
               specified, the default is PERSISTENT.
+            - 'Some valid choices include: "SCRATCH", "PERSISTENT"'
             required: false
-            choices:
-            - SCRATCH
-            - PERSISTENT
       machine_type:
         description:
         - The machine type to use in the VM instance template.
@@ -273,17 +267,16 @@ options:
                   IP address pool. If you specify a static external IP address, it
                   must live in the same region as the zone of the instance.
                 - 'This field represents a link to a Address resource in GCP. It can
-                  be specified in two ways. First, you can place in the address of
-                  the resource here as a string Alternatively, you can add `register:
-                  name-of-resource` to a gcp_compute_address task and then set this
-                  nat_ip field to "{{ name-of-resource }}"'
+                  be specified in two ways. First, you can place a dictionary with
+                  key ''address'' and value of your resource''s address Alternatively,
+                  you can add `register: name-of-resource` to a gcp_compute_address
+                  task and then set this nat_ip field to "{{ name-of-resource }}"'
                 required: false
               type:
                 description:
                 - The type of configuration. The default and only option is ONE_TO_ONE_NAT.
+                - 'Some valid choices include: "ONE_TO_ONE_NAT"'
                 required: true
-                choices:
-                - ONE_TO_ONE_NAT
           alias_ip_ranges:
             description:
             - An array of alias IP ranges for this network interface. Can only be
@@ -312,10 +305,10 @@ options:
               network global/networks/default is used; if the network is not specified
               but the subnetwork is specified, the network is inferred.
             - 'This field represents a link to a Network resource in GCP. It can be
-              specified in two ways. First, you can place in the selfLink of the resource
-              here as a string Alternatively, you can add `register: name-of-resource`
-              to a gcp_compute_network task and then set this network field to "{{
-              name-of-resource }}"'
+              specified in two ways. First, you can place a dictionary with key ''selfLink''
+              and value of your resource''s selfLink Alternatively, you can add `register:
+              name-of-resource` to a gcp_compute_network task and then set this network
+              field to "{{ name-of-resource }}"'
             required: false
           network_ip:
             description:
@@ -330,10 +323,10 @@ options:
               If the network is in auto subnet mode, providing the subnetwork is optional.
               If the network is in custom subnet mode, then this field should be specified.
             - 'This field represents a link to a Subnetwork resource in GCP. It can
-              be specified in two ways. First, you can place in the selfLink of the
-              resource here as a string Alternatively, you can add `register: name-of-resource`
-              to a gcp_compute_subnetwork task and then set this subnetwork field
-              to "{{ name-of-resource }}"'
+              be specified in two ways. First, you can place a dictionary with key
+              ''selfLink'' and value of your resource''s selfLink Alternatively, you
+              can add `register: name-of-resource` to a gcp_compute_subnetwork task
+              and then set this subnetwork field to "{{ name-of-resource }}"'
             required: false
       scheduling:
         description:
@@ -626,7 +619,7 @@ properties:
           - Note that for InstanceTemplate, specify the disk name, not the URL for
             the disk.
           returned: success
-          type: str
+          type: dict
         type:
           description:
           - Specifies the type of the disk, either SCRATCH or PERSISTENT. If not specified,
@@ -699,7 +692,7 @@ properties:
                 IP address pool. If you specify a static external IP address, it must
                 live in the same region as the zone of the instance.
               returned: success
-              type: str
+              type: dict
             type:
               description:
               - The type of configuration. The default and only option is ONE_TO_ONE_NAT.
@@ -741,7 +734,7 @@ properties:
             global/networks/default is used; if the network is not specified but the
             subnetwork is specified, the network is inferred.
           returned: success
-          type: str
+          type: dict
         networkIP:
           description:
           - An IPv4 internal network address to assign to the instance for this network
@@ -756,7 +749,7 @@ properties:
             If the network is in auto subnet mode, providing the subnetwork is optional.
             If the network is in custom subnet mode, then this field should be specified.
           returned: success
-          type: str
+          type: dict
     scheduling:
       description:
       - Sets the scheduling options for this instance.
@@ -875,10 +868,10 @@ def main():
                                     source_image_encryption_key=dict(type='dict', options=dict(raw_key=dict(type='str'))),
                                 ),
                             ),
-                            interface=dict(type='str', choices=['SCSI', 'NVME']),
-                            mode=dict(type='str', choices=['READ_WRITE', 'READ_ONLY']),
-                            source=dict(),
-                            type=dict(type='str', choices=['SCRATCH', 'PERSISTENT']),
+                            interface=dict(type='str'),
+                            mode=dict(type='str'),
+                            source=dict(type='dict'),
+                            type=dict(type='str'),
                         ),
                     ),
                     machine_type=dict(required=True, type='str'),
@@ -892,16 +885,14 @@ def main():
                             access_configs=dict(
                                 type='list',
                                 elements='dict',
-                                options=dict(
-                                    name=dict(required=True, type='str'), nat_ip=dict(), type=dict(required=True, type='str', choices=['ONE_TO_ONE_NAT'])
-                                ),
+                                options=dict(name=dict(required=True, type='str'), nat_ip=dict(type='dict'), type=dict(required=True, type='str')),
                             ),
                             alias_ip_ranges=dict(
                                 type='list', elements='dict', options=dict(ip_cidr_range=dict(type='str'), subnetwork_range_name=dict(type='str'))
                             ),
-                            network=dict(),
+                            network=dict(type='dict'),
                             network_ip=dict(type='str'),
-                            subnetwork=dict(),
+                            subnetwork=dict(type='dict'),
                         ),
                     ),
                     scheduling=dict(
@@ -951,7 +942,8 @@ def create(module, link, kind):
 
 
 def update(module, link, kind):
-    module.fail_json(msg="InstanceTemplate cannot be edited")
+    delete(module, self_link(module), kind)
+    create(module, collection(module), kind)
 
 
 def delete(module, link, kind):
@@ -1045,7 +1037,7 @@ def response_to_hash(module, response):
 def disk_type_selflink(name, params):
     if name is None:
         return
-    url = r"https://www.googleapis.com/compute/v1/projects/.*/zones/[a-z1-9\-]*/diskTypes/[a-z1-9\-]*"
+    url = r"https://www.googleapis.com/compute/v1/projects/.*/zones/.*/diskTypes/.*"
     if not re.match(url, name):
         name = "https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/diskTypes/%s".format(**params) % name
     return name
@@ -1087,14 +1079,19 @@ def raise_if_errors(response, err_path, module):
 
 
 def encode_request(request, module):
-    if 'metadata' in request and request['metadata'] is not None:
-        request['metadata'] = metadata_encoder(request['metadata'])
+    if 'properties' in request and request['properties'] is not None and 'metadata' in request['properties'] and request['properties']['metadata'] is not None:
+        request['properties']['metadata'] = metadata_encoder(request['properties']['metadata'])
     return request
 
 
 def decode_response(response, module):
-    if 'metadata' in response and response['metadata'] is not None:
-        response['metadata'] = metadata_decoder(response['metadata'])
+    if (
+        'properties' in response
+        and response['properties'] is not None
+        and 'metadata' in response['properties']
+        and response['properties']['metadata'] is not None
+    ):
+        response['properties']['metadata'] = metadata_decoder(response['properties']['metadata'])
     return response
 
 
@@ -1237,14 +1234,10 @@ class InstanceTemplateDiskencryptionkey(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict(
-            {u'rawKey': self.request.get('raw_key'), u'rsaEncryptedKey': self.request.get('rsa_encrypted_key'), u'sha256': self.request.get('sha256')}
-        )
+        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key'), u'rsaEncryptedKey': self.request.get('rsa_encrypted_key')})
 
     def from_response(self):
-        return remove_nones_from_dict(
-            {u'rawKey': self.request.get(u'rawKey'), u'rsaEncryptedKey': self.request.get(u'rsaEncryptedKey'), u'sha256': self.request.get(u'sha256')}
-        )
+        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey'), u'rsaEncryptedKey': self.request.get(u'rsaEncryptedKey')})
 
 
 class InstanceTemplateInitializeparams(object):
@@ -1291,10 +1284,10 @@ class InstanceTemplateSourceimageencryptionkey(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key'), u'sha256': self.request.get('sha256')})
+        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key')})
 
     def from_response(self):
-        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey'), u'sha256': self.request.get(u'sha256')})
+        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey')})
 
 
 class InstanceTemplateGuestacceleratorsArray(object):
@@ -1349,7 +1342,6 @@ class InstanceTemplateNetworkinterfacesArray(object):
             {
                 u'accessConfigs': InstanceTemplateAccessconfigsArray(item.get('access_configs', []), self.module).to_request(),
                 u'aliasIpRanges': InstanceTemplateAliasiprangesArray(item.get('alias_ip_ranges', []), self.module).to_request(),
-                u'name': item.get('name'),
                 u'network': replace_resource_dict(item.get(u'network', {}), 'selfLink'),
                 u'networkIP': item.get('network_ip'),
                 u'subnetwork': replace_resource_dict(item.get(u'subnetwork', {}), 'selfLink'),
@@ -1361,7 +1353,6 @@ class InstanceTemplateNetworkinterfacesArray(object):
             {
                 u'accessConfigs': InstanceTemplateAccessconfigsArray(item.get(u'accessConfigs', []), self.module).from_response(),
                 u'aliasIpRanges': InstanceTemplateAliasiprangesArray(item.get(u'aliasIpRanges', []), self.module).from_response(),
-                u'name': item.get(u'name'),
                 u'network': item.get(u'network'),
                 u'networkIP': item.get(u'networkIP'),
                 u'subnetwork': item.get(u'subnetwork'),

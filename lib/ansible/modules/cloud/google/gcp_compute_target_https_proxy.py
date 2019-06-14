@@ -68,12 +68,9 @@ options:
       one of NONE, ENABLE, or DISABLE. If NONE is specified, uses the QUIC policy
       with no user overrides, which is equivalent to DISABLE. Not specifying this
       field is equivalent to specifying NONE.
+    - 'Some valid choices include: "NONE", "ENABLE", "DISABLE"'
     required: false
     version_added: 2.7
-    choices:
-    - NONE
-    - ENABLE
-    - DISABLE
   ssl_certificates:
     description:
     - A list of SslCertificate resources that are used to authenticate connections
@@ -86,9 +83,10 @@ options:
       resource. If not set, the TargetHttpsProxy resource will not have any SSL policy
       configured.
     - 'This field represents a link to a SslPolicy resource in GCP. It can be specified
-      in two ways. First, you can place in the selfLink of the resource here as a
-      string Alternatively, you can add `register: name-of-resource` to a gcp_compute_ssl_policy
-      task and then set this ssl_policy field to "{{ name-of-resource }}"'
+      in two ways. First, you can place a dictionary with key ''selfLink'' and value
+      of your resource''s selfLink Alternatively, you can add `register: name-of-resource`
+      to a gcp_compute_ssl_policy task and then set this ssl_policy field to "{{ name-of-resource
+      }}"'
     required: false
     version_added: 2.8
   url_map:
@@ -96,9 +94,10 @@ options:
     - A reference to the UrlMap resource that defines the mapping from URL to the
       BackendService.
     - 'This field represents a link to a UrlMap resource in GCP. It can be specified
-      in two ways. First, you can place in the selfLink of the resource here as a
-      string Alternatively, you can add `register: name-of-resource` to a gcp_compute_url_map
-      task and then set this url_map field to "{{ name-of-resource }}"'
+      in two ways. First, you can place a dictionary with key ''selfLink'' and value
+      of your resource''s selfLink Alternatively, you can add `register: name-of-resource`
+      to a gcp_compute_url_map task and then set this url_map field to "{{ name-of-resource
+      }}"'
     required: true
 extends_documentation_fragment: gcp
 notes:
@@ -235,12 +234,12 @@ sslPolicy:
     resource. If not set, the TargetHttpsProxy resource will not have any SSL policy
     configured.
   returned: success
-  type: str
+  type: dict
 urlMap:
   description:
   - A reference to the UrlMap resource that defines the mapping from URL to the BackendService.
   returned: success
-  type: str
+  type: dict
 '''
 
 ################################################################################
@@ -264,10 +263,10 @@ def main():
             state=dict(default='present', choices=['present', 'absent'], type='str'),
             description=dict(type='str'),
             name=dict(required=True, type='str'),
-            quic_override=dict(type='str', choices=['NONE', 'ENABLE', 'DISABLE']),
-            ssl_certificates=dict(required=True, type='list'),
-            ssl_policy=dict(),
-            url_map=dict(required=True),
+            quic_override=dict(type='str'),
+            ssl_certificates=dict(required=True, type='list', elements='dict'),
+            ssl_policy=dict(type='dict'),
+            url_map=dict(required=True, type='dict'),
         )
     )
 

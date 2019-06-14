@@ -110,6 +110,7 @@ options:
             secret:
                 description:
                 - RADIUS password.
+                - Setting password is not idempotent.
                 type: str
     radius_coa_enabled:
         description:
@@ -145,6 +146,7 @@ options:
             secret:
                 description:
                 - RADIUS password.
+                - Setting password is not idempotent.
                 type: str
     ip_assignment_mode:
         description:
@@ -158,18 +160,23 @@ options:
     use_vlan_tagging:
         description:
         - Set whether to use VLAN tagging.
+        - Requires C(default_vlan_id) to be set.
         type: bool
     default_vlan_id:
         description:
         - Default VLAN ID.
+        - Requires C(ip_assignment_mode) to be C(Bridge mode) or C(Layer 3 roaming).
         type: str
     vlan_id:
         description:
         - ID number of VLAN on SSID.
+        - Requires C(ip_assignment_mode) to be C(ayer 3 roaming with a concentrator) or C(VPN).
         type: int
     ap_tags_vlan_ids:
         description:
         - List of VLAN tags.
+        - Requires C(ip_assignment_mode) to be C(Bridge mode) or C(Layer 3 roaming).
+        - Requires C(use_vlan_tagging) to be C(True).
         type: list
         suboptions:
             tags:
@@ -216,17 +223,132 @@ extends_documentation_fragment: meraki
 '''
 
 EXAMPLES = r'''
+- name: Enable and name SSID
+  meraki_ssid:
+    auth_key: abc123
+    state: present
+    org_name: YourOrg
+    net_name: WiFi
+    name: GuestSSID
+    enabled: true
+  delegate_to: localhost
+
+- name: Set PSK with invalid encryption mode
+  meraki_ssid:
+    auth_key: abc123
+    state: present
+    org_name: YourOrg
+    net_name: WiFi
+    name: GuestSSID
+    auth_mode: psk
+    psk: abc1234
+    encryption_mode: eap
+  ignore_errors: yes
+  delegate_to: localhost
+
+- name: Configure RADIUS servers
+  meraki_ssid:
+    auth_key: abc123
+    state: present
+    org_name: YourOrg
+    net_name: WiFi
+    name: GuestSSID
+    auth_mode: open-with-radius
+    radius_servers:
+      - host: 192.0.1.200
+        port: 1234
+        secret: abc98765
+  delegate_to: localhost
+
+- name: Enable click-through splash page
+  meraki_ssid:
+    auth_key: abc123
+    state: present
+    org_name: YourOrg
+    net_name: WiFi
+    name: GuestSSID
+    splash_page: Click-through splash page
+  delegate_to: localhost
 '''
 
 RETURN = r'''
 data:
-    description: Information about queried or updated object.
-    type: list
-    returned: info
-    sample:
-      "data": {
-
-      }
+    description: List of wireless SSIDs.
+    returned: success
+    type: complex
+    contains:
+        number:
+            description: Zero-based index number for SSIDs.
+            returned: success
+            type: int
+            sample: 0
+        name:
+            description:
+              - Name of wireless SSID.
+              - This value is what is broadcasted.
+            returned: success
+            type: str
+            sample: CorpWireless
+        enabled:
+            description: Enabled state of wireless network.
+            returned: success
+            type: bool
+            sample: true
+        splash_page:
+            description: Splash page to show when user authenticates.
+            returned: success
+            type: str
+            sample: Click-through splash page
+        ssid_admin_accessible:
+            description: Whether SSID is administratively accessible.
+            returned: success
+            type: bool
+            sample: true
+        auth_mode:
+            description: Authentication method.
+            returned: success
+            type: str
+            sample: psk
+        psk:
+            description: Secret wireless password.
+            returned: success
+            type: str
+            sample: SecretWiFiPass
+        encryption_mode:
+            description: Wireless traffic encryption method.
+            returned: success
+            type: str
+            sample: wpa
+        wpa_encryption_mode:
+            description: Enabled WPA versions.
+            returned: success
+            type: str
+            sample: WPA2 only
+        ip_assignment_mode:
+            description: Wireless client IP assignment method.
+            returned: success
+            type: str
+            sample: NAT mode
+        min_bitrate:
+            description: Minimum bitrate a wireless client can connect at.
+            returned: success
+            type: int
+            sample: 11
+        band_selection:
+            description: Wireless RF frequency wireless network will be broadcast on.
+            returned: success
+            type: str
+            sample: 5 GHz band only
+        per_client_bandwidth_limit_up:
+            description: Maximum upload bandwidth a client can use.
+            returned: success
+            type: int
+            sample: 1000
+        per_client_bandwidth_limit_down:
+            description: Maximum download bandwidth a client can use.
+            returned: success
+            type: int
+            sample: 0
 '''
 
 import os
@@ -375,7 +497,7 @@ def main():
     meraki.params['follow_redirects'] = 'all'
 
     query_urls = {'ssid': '/networks/{net_id}/ssids'}
-    query_url = {'ssid': '/networks/{net_id}/ssids/'}
+    query_url = {'ssid': '/networks/{net_id}/ssids/{number}'}
     update_url = {'ssid': '/networks/{net_id}/ssids/'}
 
     meraki.url_catalog['get_all'].update(query_urls)
@@ -407,6 +529,9 @@ def main():
         if meraki.params['auth_mode'] not in ('open-with-radius', '8021x-radius') or meraki.params['radius_accounting_enabled'] is False:
             meraki.fail_json(msg='radius_accounting_servers is only allowed when auth_mode is open_with_radius or 8021x-radius and \
                 radius_accounting_enabled is true')
+    if meraki.params['use_vlan_tagging'] is True:
+        if meraki.params['default_vlan_id'] is None:
+            meraki.fail_json(msg="default_vlan_id is required when use_vlan_tagging is True")
 
     # manipulate or modify the state as needed (this is going to be the
     # part where your module will do what it needs to do)
@@ -421,10 +546,10 @@ def main():
     if meraki.params['state'] == 'query':
         if meraki.params['name']:
             ssid_id = get_ssid_number(meraki.params['name'], get_ssids(meraki, net_id))
-            path = meraki.construct_path('get_one', net_id=net_id) + str(ssid_id)
+            path = meraki.construct_path('get_one', net_id=net_id, custom={'number': ssid_id})
             meraki.result['data'] = meraki.request(path, method='GET')
-        elif meraki.params['number']:
-            path = meraki.construct_path('get_one', net_id=net_id) + meraki.params['number']
+        elif meraki.params['number'] is not None:
+            path = meraki.construct_path('get_one', net_id=net_id, custom={'number': meraki.params['number']})
             meraki.result['data'] = meraki.request(path, method='GET')
         else:
             meraki.result['data'] = get_ssids(meraki, net_id)
@@ -433,12 +558,21 @@ def main():
         for k, v in param_map.items():
             if meraki.params[v] is not None:
                 payload[k] = meraki.params[v]
+        # Short term solution for camelCase/snake_case differences
+        # Will be addressed later with a method in module utils
+        if meraki.params['ap_tags_vlan_ids'] is not None:
+            for i in payload['apTagsAndVlanIds']:
+                try:
+                    i['vlanId'] = i['vlan_id']
+                    del i['vlan_id']
+                except KeyError:
+                    pass
         ssids = get_ssids(meraki, net_id)
         number = meraki.params['number']
         if number is None:
             number = get_ssid_number(meraki.params['name'], ssids)
         original = ssids[number]
-        if meraki.is_update_required(original, payload):
+        if meraki.is_update_required(original, payload, optional_ignore=['secret']):
             ssid_id = meraki.params['number']
             if ssid_id is None:  # Name should be used to lookup number
                 ssid_id = get_ssid_number(meraki.params['name'], ssids)
@@ -450,6 +584,8 @@ def main():
             result = meraki.request(path, 'PUT', payload=json.dumps(payload))
             meraki.result['data'] = result
             meraki.result['changed'] = True
+        else:
+            meraki.result['data'] = original
     elif meraki.params['state'] == 'absent':
         ssids = get_ssids(meraki, net_id)
         ssid_id = meraki.params['number']
@@ -462,7 +598,6 @@ def main():
         path = meraki.construct_path('update', net_id=net_id) + str(ssid_id)
         payload = default_payload
         payload['name'] = payload['name'] + ' ' + str(ssid_id + 1)
-        # meraki.fail_json(msg='Payload', payload=payload)
         result = meraki.request(path, 'PUT', payload=json.dumps(payload))
         meraki.result['data'] = result
         meraki.result['changed'] = True

@@ -61,9 +61,10 @@ options:
         description:
         - The name of the bucket.
         - 'This field represents a link to a Bucket resource in GCP. It can be specified
-          in two ways. First, you can place in the name of the resource here as a
-          string Alternatively, you can add `register: name-of-resource` to a gcp_storage_bucket
-          task and then set this bucket field to "{{ name-of-resource }}"'
+          in two ways. First, you can place a dictionary with key ''name'' and value
+          of your resource''s name Alternatively, you can add `register: name-of-resource`
+          to a gcp_storage_bucket task and then set this bucket field to "{{ name-of-resource
+          }}"'
         required: true
       entity:
         description:
@@ -91,19 +92,13 @@ options:
           team:
             description:
             - The team.
+            - 'Some valid choices include: "editors", "owners", "viewers"'
             required: false
-            choices:
-            - editors
-            - owners
-            - viewers
       role:
         description:
         - The access permission for the entity.
+        - 'Some valid choices include: "OWNER", "READER", "WRITER"'
         required: false
-        choices:
-        - OWNER
-        - READER
-        - WRITER
   cors:
     description:
     - The bucket's Cross-Origin Resource Sharing (CORS) configuration.
@@ -140,9 +135,10 @@ options:
         description:
         - The name of the bucket.
         - 'This field represents a link to a Bucket resource in GCP. It can be specified
-          in two ways. First, you can place in the name of the resource here as a
-          string Alternatively, you can add `register: name-of-resource` to a gcp_storage_bucket
-          task and then set this bucket field to "{{ name-of-resource }}"'
+          in two ways. First, you can place a dictionary with key ''name'' and value
+          of your resource''s name Alternatively, you can add `register: name-of-resource`
+          to a gcp_storage_bucket task and then set this bucket field to "{{ name-of-resource
+          }}"'
         required: true
       entity:
         description:
@@ -159,10 +155,8 @@ options:
       role:
         description:
         - The access permission for the entity.
+        - 'Some valid choices include: "OWNER", "READER"'
         required: true
-        choices:
-        - OWNER
-        - READER
   lifecycle:
     description:
     - The bucket's lifecycle configuration.
@@ -188,10 +182,8 @@ options:
                 description:
                 - Type of the action. Currently, only Delete and SetStorageClass are
                   supported.
+                - 'Some valid choices include: "Delete", "SetStorageClass"'
                 required: false
-                choices:
-                - Delete
-                - SetStorageClass
           condition:
             description:
             - The condition(s) under which the action will be taken.
@@ -272,14 +264,9 @@ options:
     - Values include MULTI_REGIONAL, REGIONAL, STANDARD, NEARLINE, COLDLINE, and DURABLE_REDUCED_AVAILABILITY.
       If this value is not specified when the bucket is created, it will default to
       STANDARD. For more information, see storage classes.
+    - 'Some valid choices include: "MULTI_REGIONAL", "REGIONAL", "STANDARD", "NEARLINE",
+      "COLDLINE", "DURABLE_REDUCED_AVAILABILITY"'
     required: false
-    choices:
-    - MULTI_REGIONAL
-    - REGIONAL
-    - STANDARD
-    - NEARLINE
-    - COLDLINE
-    - DURABLE_REDUCED_AVAILABILITY
   versioning:
     description:
     - The bucket's versioning configuration.
@@ -327,14 +314,9 @@ options:
     - '- "projectPrivate": Object owner gets OWNER access, and project team members
       get access according to their roles.'
     - '- "publicRead": Object owner gets OWNER access, and allUsers get READER access.'
+    - 'Some valid choices include: "authenticatedRead", "bucketOwnerFullControl",
+      "bucketOwnerRead", "private", "projectPrivate", "publicRead"'
     required: false
-    choices:
-    - authenticatedRead
-    - bucketOwnerFullControl
-    - bucketOwnerRead
-    - private
-    - projectPrivate
-    - publicRead
 extends_documentation_fragment: gcp
 '''
 
@@ -359,7 +341,7 @@ acl:
       description:
       - The name of the bucket.
       returned: success
-      type: str
+      type: dict
     domain:
       description:
       - The domain associated with the entity.
@@ -453,7 +435,7 @@ defaultObjectAcl:
       description:
       - The name of the bucket.
       returned: success
-      type: str
+      type: dict
     domain:
       description:
       - The domain associated with the entity.
@@ -740,13 +722,11 @@ def main():
                 type='list',
                 elements='dict',
                 options=dict(
-                    bucket=dict(required=True),
+                    bucket=dict(required=True, type='dict'),
                     entity=dict(required=True, type='str'),
                     entity_id=dict(type='str'),
-                    project_team=dict(
-                        type='dict', options=dict(project_number=dict(type='str'), team=dict(type='str', choices=['editors', 'owners', 'viewers']))
-                    ),
-                    role=dict(type='str', choices=['OWNER', 'READER', 'WRITER']),
+                    project_team=dict(type='dict', options=dict(project_number=dict(type='str'), team=dict(type='str'))),
+                    role=dict(type='str'),
                 ),
             ),
             cors=dict(
@@ -763,10 +743,10 @@ def main():
                 type='list',
                 elements='dict',
                 options=dict(
-                    bucket=dict(required=True),
+                    bucket=dict(required=True, type='dict'),
                     entity=dict(required=True, type='str'),
                     object=dict(type='str'),
-                    role=dict(required=True, type='str', choices=['OWNER', 'READER']),
+                    role=dict(required=True, type='str'),
                 ),
             ),
             lifecycle=dict(
@@ -776,9 +756,7 @@ def main():
                         type='list',
                         elements='dict',
                         options=dict(
-                            action=dict(
-                                type='dict', options=dict(storage_class=dict(type='str'), type=dict(type='str', choices=['Delete', 'SetStorageClass']))
-                            ),
+                            action=dict(type='dict', options=dict(storage_class=dict(type='str'), type=dict(type='str'))),
                             condition=dict(
                                 type='dict',
                                 options=dict(
@@ -798,13 +776,11 @@ def main():
             metageneration=dict(type='int'),
             name=dict(type='str'),
             owner=dict(type='dict', options=dict(entity=dict(type='str'))),
-            storage_class=dict(type='str', choices=['MULTI_REGIONAL', 'REGIONAL', 'STANDARD', 'NEARLINE', 'COLDLINE', 'DURABLE_REDUCED_AVAILABILITY']),
+            storage_class=dict(type='str'),
             versioning=dict(type='dict', options=dict(enabled=dict(type='bool'))),
             website=dict(type='dict', options=dict(main_page_suffix=dict(type='str'), not_found_page=dict(type='str'))),
             project=dict(type='str'),
-            predefined_default_object_acl=dict(
-                type='str', choices=['authenticatedRead', 'bucketOwnerFullControl', 'bucketOwnerRead', 'private', 'projectPrivate', 'publicRead']
-            ),
+            predefined_default_object_acl=dict(type='str'),
         )
     )
 
@@ -979,11 +955,8 @@ class BucketAclArray(object):
         return remove_nones_from_dict(
             {
                 u'bucket': replace_resource_dict(item.get(u'bucket', {}), 'name'),
-                u'domain': item.get('domain'),
-                u'email': item.get('email'),
                 u'entity': item.get('entity'),
                 u'entityId': item.get('entity_id'),
-                u'id': item.get('id'),
                 u'projectTeam': BucketProjectteam(item.get('project_team', {}), self.module).to_request(),
                 u'role': item.get('role'),
             }
@@ -993,11 +966,8 @@ class BucketAclArray(object):
         return remove_nones_from_dict(
             {
                 u'bucket': item.get(u'bucket'),
-                u'domain': item.get(u'domain'),
-                u'email': item.get(u'email'),
                 u'entity': item.get(u'entity'),
                 u'entityId': item.get(u'entityId'),
-                u'id': item.get(u'id'),
                 u'projectTeam': BucketProjectteam(item.get(u'projectTeam', {}), self.module).from_response(),
                 u'role': item.get(u'role'),
             }
@@ -1084,32 +1054,15 @@ class BucketDefaultobjectaclArray(object):
         return remove_nones_from_dict(
             {
                 u'bucket': replace_resource_dict(item.get(u'bucket', {}), 'name'),
-                u'domain': item.get('domain'),
-                u'email': item.get('email'),
                 u'entity': item.get('entity'),
-                u'entityId': item.get('entity_id'),
-                u'generation': item.get('generation'),
-                u'id': item.get('id'),
                 u'object': item.get('object'),
-                u'projectTeam': BucketProjectteam(item.get('project_team', {}), self.module).to_request(),
                 u'role': item.get('role'),
             }
         )
 
     def _response_from_item(self, item):
         return remove_nones_from_dict(
-            {
-                u'bucket': item.get(u'bucket'),
-                u'domain': item.get(u'domain'),
-                u'email': item.get(u'email'),
-                u'entity': item.get(u'entity'),
-                u'entityId': item.get(u'entityId'),
-                u'generation': item.get(u'generation'),
-                u'id': item.get(u'id'),
-                u'object': item.get(u'object'),
-                u'projectTeam': BucketProjectteam(item.get(u'projectTeam', {}), self.module).from_response(),
-                u'role': item.get(u'role'),
-            }
+            {u'bucket': item.get(u'bucket'), u'entity': item.get(u'entity'), u'object': item.get(u'object'), u'role': item.get(u'role')}
         )
 
 
@@ -1250,10 +1203,10 @@ class BucketOwner(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({u'entity': self.request.get('entity'), u'entityId': self.request.get('entity_id')})
+        return remove_nones_from_dict({u'entity': self.request.get('entity')})
 
     def from_response(self):
-        return remove_nones_from_dict({u'entity': self.request.get(u'entity'), u'entityId': self.request.get(u'entityId')})
+        return remove_nones_from_dict({u'entity': self.request.get(u'entity')})
 
 
 class BucketVersioning(object):

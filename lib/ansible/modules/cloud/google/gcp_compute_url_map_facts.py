@@ -42,7 +42,7 @@ requirements:
 options:
   filters:
     description:
-    - A list of filter value pairs. Available filters are listed here U(https://cloud.google.com/sdk/gcloud/reference/topic/filters.)
+    - A list of filter value pairs. Available filters are listed here U(https://cloud.google.com/sdk/gcloud/reference/topic/filters).
     - Each additional filter in the list will act be added as an AND condition (filter1
       and filter2) .
 extends_documentation_fragment: gcp
@@ -60,8 +60,8 @@ EXAMPLES = '''
 '''
 
 RETURN = '''
-items:
-  description: List of items
+resources:
+  description: List of resources
   returned: always
   type: complex
   contains:
@@ -74,7 +74,7 @@ items:
       description:
       - A reference to BackendService resource if none of the hostRules match.
       returned: success
-      type: str
+      type: dict
     description:
       description:
       - An optional description of this resource. Provide this property when you create
@@ -139,7 +139,7 @@ items:
             the pathRules defined by this PathMatcher is matched by the URL's path
             portion.
           returned: success
-          type: str
+          type: dict
         description:
           description:
           - An optional description of this resource.
@@ -168,7 +168,7 @@ items:
               description:
               - A reference to the BackendService resource if this rule is matched.
               returned: success
-              type: str
+              type: dict
     tests:
       description:
       - The list of expected URL mappings. Requests to update this UrlMap will succeed
@@ -196,7 +196,7 @@ items:
           - A reference to expected BackendService resource the given URL should be
             mapped to.
           returned: success
-          type: str
+          type: dict
 '''
 
 ################################################################################
@@ -221,7 +221,7 @@ def main():
         items = items.get('items')
     else:
         items = []
-    return_value = {'items': items}
+    return_value = {'resources': items}
     module.exit_json(**return_value)
 
 

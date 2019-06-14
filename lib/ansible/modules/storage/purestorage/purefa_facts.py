@@ -23,7 +23,7 @@ description:
     groups and volume counts. Additional fact information can be collected
     based on the configured set of arguements.
 author:
-  - Simon Dodsley (@sdodsley)
+  - Pure Storage ansible Team (@sdodsley) <pure-ansible-team@purestorage.com>
 options:
   gather_subset:
     description:
@@ -31,6 +31,7 @@ options:
         Possible values for this include all, minimum, config, performance,
         capacity, network, subnet, interfaces, hgroups, pgroups, hosts,
         admins, volumes, snapshots, pods, vgroups, offload and apps.
+    type: list
     required: false
     default: minimum
 extends_documentation_fragment:
@@ -425,7 +426,6 @@ def generate_config_dict(array):
                 'group': roles[role]['group'],
                 'group_base': roles[role]['group_base'],
             }
-        config_facts['directory_service'].update(array.list_directory_service_roles())
     else:
         config_facts['directory_service'].update(array.get_directory_service(groups=True))
     # NTP
@@ -585,12 +585,17 @@ def generate_host_dict(array):
     hosts = array.list_hosts()
     for host in range(0, len(hosts)):
         hostname = hosts[host]['name']
+        tports = []
+        host_all_info = array.get_host(hostname, all=True)
+        if host_all_info:
+            tports = host_all_info[0]['target_port']
         host_facts[hostname] = {
             'hgroup': hosts[host]['hgroup'],
             'iqn': hosts[host]['iqn'],
             'wwn': hosts[host]['wwn'],
             'personality': array.get_host(hostname,
-                                          personality=True)['personality']
+                                          personality=True)['personality'],
+            'target_port': tports
         }
         if NVME_API_VERSION in api_version:
             host_facts[hostname]['nqn'] = hosts[host]['nqn']

@@ -108,12 +108,13 @@ class ModuleArgsParser:
     Args may also be munged for certain shell command parameters.
     """
 
-    def __init__(self, task_ds=None):
+    def __init__(self, task_ds=None, collection_list=None):
         task_ds = {} if task_ds is None else task_ds
 
         if not isinstance(task_ds, dict):
             raise AnsibleAssertionError("the type of 'task_ds' should be a dict, but is a %s" % type(task_ds))
         self._task_ds = task_ds
+        self._collection_list = collection_list
 
     def _split_module_string(self, module_string):
         '''
@@ -143,7 +144,7 @@ class ModuleArgsParser:
         if additional_args:
             if isinstance(additional_args, string_types):
                 templar = Templar(loader=None)
-                if templar._contains_vars(additional_args):
+                if templar.is_template(additional_args):
                     final_args['_variable_params'] = additional_args
                 else:
                     raise AnsibleParserError("Complex args containing variables cannot use bare variables (without Jinja2 delimiters), "
@@ -287,7 +288,8 @@ class ModuleArgsParser:
 
         # walk the input dictionary to see we recognize a module name
         for (item, value) in iteritems(self._task_ds):
-            if item in BUILTIN_TASKS or item in action_loader or item in module_loader:
+            if item in BUILTIN_TASKS or action_loader.has_plugin(item, collection_list=self._collection_list) or \
+                    module_loader.has_plugin(item, collection_list=self._collection_list):
                 # finding more than one module name is a problem
                 if action is not None:
                     raise AnsibleParserError("conflicting action statements: %s, %s" % (action, item), obj=self._task_ds)
@@ -309,7 +311,7 @@ class ModuleArgsParser:
         elif args.get('_raw_params', '') != '' and action not in RAW_PARAM_MODULES:
             templar = Templar(loader=None)
             raw_params = args.pop('_raw_params')
-            if templar._contains_vars(raw_params):
+            if templar.is_template(raw_params):
                 args['_variable_params'] = raw_params
             else:
                 raise AnsibleParserError("this task '%s' has extra params, which is only allowed in the following modules: %s" % (action,

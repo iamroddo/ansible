@@ -5,6 +5,7 @@
             "Action": [
                 "iam:GetGroup",
                 "iam:GetInstanceProfile",
+                "iam:CreateInstanceProfile",
                 "iam:GetPolicy",
                 "iam:GetPolicyVersion",
                 "iam:GetRole",
@@ -90,6 +91,12 @@
             "Resource": [
                 "arn:aws:logs:{{aws_region}}:{{aws_account}}:log-group:ansible-testing*"
             ]
+        },
+        {
+            "Sid": "AllowWAFRegionalusage",
+            "Action": "waf-regional:*",
+            "Effect": "Allow",
+            "Resource": "*"
         }
     ]
 }

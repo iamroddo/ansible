@@ -70,9 +70,9 @@ Setting a default AWS region for specific EC2-related modules::
       module_defaults:
         ec2:
           region: '{{ my_region }}'
-        ec2_instance_facts:
+        ec2_instance_info:
           region: '{{ my_region }}'
-        ec2_vpc_net_facts:
+        ec2_vpc_net_info:
           region: '{{ my_region }}'
 
 .. _module_defaults_groups:
@@ -96,6 +96,8 @@ it easier to author playbooks making heavy use of API-based modules such as clou
 +-------+---------------------------+-----------------+
 | k8s   | Kubernetes                | 2.8             |
 +-------+---------------------------+-----------------+
+| os    | OpenStack                 | 2.8             |
++-------+---------------------------+-----------------+
 
 Use the groups with `module_defaults` by prefixing the group name with `group/` - e.g. `group/aws`
 
@@ -111,6 +113,6 @@ In a playbook, you can set module defaults for whole groups of modules, such as 
       tasks:
       - aws_s3_bucket_facts:
       # now the region is shared between both facts modules
-      - ec2_ami_facts:
+      - ec2_ami_info:
           filters:
             name: 'RHEL*7.5*'

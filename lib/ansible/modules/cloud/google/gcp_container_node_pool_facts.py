@@ -52,9 +52,10 @@ options:
     description:
     - The cluster this node pool belongs to.
     - 'This field represents a link to a Cluster resource in GCP. It can be specified
-      in two ways. First, you can place in the name of the resource here as a string
-      Alternatively, you can add `register: name-of-resource` to a gcp_container_cluster
-      task and then set this cluster field to "{{ name-of-resource }}"'
+      in two ways. First, you can place a dictionary with key ''name'' and value of
+      your resource''s name Alternatively, you can add `register: name-of-resource`
+      to a gcp_container_cluster task and then set this cluster field to "{{ name-of-resource
+      }}"'
     required: true
 extends_documentation_fragment: gcp
 '''
@@ -71,8 +72,8 @@ EXAMPLES = '''
 '''
 
 RETURN = '''
-items:
-  description: List of items
+resources:
+  description: List of resources
   returned: always
   type: complex
   contains:
@@ -174,6 +175,55 @@ items:
             for more information about preemptible VM instances.'
           returned: success
           type: bool
+        accelerators:
+          description:
+          - A list of hardware accelerators to be attached to each node.
+          returned: success
+          type: complex
+          contains:
+            acceleratorCount:
+              description:
+              - The number of the accelerator cards exposed to an instance.
+              returned: success
+              type: int
+            acceleratorType:
+              description:
+              - The accelerator type resource name.
+              returned: success
+              type: str
+        diskType:
+          description:
+          - Type of the disk attached to each node (e.g. 'pd-standard' or 'pd-ssd')
+            If unspecified, the default disk type is 'pd-standard' .
+          returned: success
+          type: str
+        minCpuPlatform:
+          description:
+          - Minimum CPU platform to be used by this instance. The instance may be
+            scheduled on the specified or newer CPU platform .
+          returned: success
+          type: str
+        taints:
+          description:
+          - List of kubernetes taints to be applied to each node.
+          returned: success
+          type: complex
+          contains:
+            key:
+              description:
+              - Key for taint.
+              returned: success
+              type: str
+            value:
+              description:
+              - Value for taint.
+              returned: success
+              type: str
+            effect:
+              description:
+              - Effect for taint.
+              returned: success
+              type: str
     initialNodeCount:
       description:
       - The initial node count for the pool. You must ensure that your Compute Engine
@@ -181,6 +231,16 @@ items:
         available firewall and routes quota.
       returned: success
       type: int
+    status:
+      description:
+      - Status of nodes in this pool instance.
+      returned: success
+      type: str
+    statusMessage:
+      description:
+      - Additional information about the current status of this node pool instance.
+      returned: success
+      type: str
     version:
       description:
       - The version of the Kubernetes of this node.
@@ -248,11 +308,39 @@ items:
                 of the upgrade.
               returned: success
               type: str
+    maxPodsConstraint:
+      description:
+      - The constraint on the maximum number of pods that can be run simultaneously
+        on a node in the node pool.
+      returned: success
+      type: complex
+      contains:
+        maxPodsPerNode:
+          description:
+          - Constraint enforced on the max num of pods per node.
+          returned: success
+          type: int
+    conditions:
+      description:
+      - Which conditions caused the current node pool state.
+      returned: success
+      type: complex
+      contains:
+        code:
+          description:
+          - Machine-friendly representation of the condition.
+          returned: success
+          type: str
+    podIpv4CidrSize:
+      description:
+      - The pod CIDR block size per node in this node pool.
+      returned: success
+      type: int
     cluster:
       description:
       - The cluster this node pool belongs to.
       returned: success
-      type: str
+      type: dict
     location:
       description:
       - The location where the node pool is deployed.
@@ -272,7 +360,7 @@ import json
 
 
 def main():
-    module = GcpModule(argument_spec=dict(location=dict(required=True, type='str', aliases=['region', 'zone']), cluster=dict(required=True)))
+    module = GcpModule(argument_spec=dict(location=dict(required=True, type='str', aliases=['region', 'zone']), cluster=dict(required=True, type='dict')))
 
     if not module.params['scopes']:
         module.params['scopes'] = ['https://www.googleapis.com/auth/cloud-platform']
@@ -282,7 +370,7 @@ def main():
         items = items.get('nodePools')
     else:
         items = []
-    return_value = {'items': items}
+    return_value = {'resources': items}
     module.exit_json(**return_value)
 
 

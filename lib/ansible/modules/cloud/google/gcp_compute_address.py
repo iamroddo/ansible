@@ -66,12 +66,10 @@ options:
     description:
     - The type of address to reserve, either INTERNAL or EXTERNAL.
     - If unspecified, defaults to EXTERNAL.
+    - 'Some valid choices include: "INTERNAL", "EXTERNAL"'
     required: false
     default: EXTERNAL
     version_added: 2.7
-    choices:
-    - INTERNAL
-    - EXTERNAL
   description:
     description:
     - An optional description of this resource.
@@ -89,11 +87,9 @@ options:
     - 'The networking tier used for configuring this address. This field can take
       the following values: PREMIUM or STANDARD. If this field is not specified, it
       is assumed to be PREMIUM.'
+    - 'Some valid choices include: "PREMIUM", "STANDARD"'
     required: false
     version_added: 2.8
-    choices:
-    - PREMIUM
-    - STANDARD
   subnetwork:
     description:
     - The URL of the subnetwork in which to reserve the address. If an IP address
@@ -101,9 +97,10 @@ options:
     - This field can only be used with INTERNAL type with GCE_ENDPOINT/DNS_RESOLVER
       purposes.
     - 'This field represents a link to a Subnetwork resource in GCP. It can be specified
-      in two ways. First, you can place in the selfLink of the resource here as a
-      string Alternatively, you can add `register: name-of-resource` to a gcp_compute_subnetwork
-      task and then set this subnetwork field to "{{ name-of-resource }}"'
+      in two ways. First, you can place a dictionary with key ''selfLink'' and value
+      of your resource''s selfLink Alternatively, you can add `register: name-of-resource`
+      to a gcp_compute_subnetwork task and then set this subnetwork field to "{{ name-of-resource
+      }}"'
     required: false
     version_added: 2.7
   region:
@@ -181,7 +178,7 @@ subnetwork:
   - This field can only be used with INTERNAL type with GCE_ENDPOINT/DNS_RESOLVER
     purposes.
   returned: success
-  type: str
+  type: dict
 users:
   description:
   - The URLs of the resources that are using this address.
@@ -215,11 +212,11 @@ def main():
         argument_spec=dict(
             state=dict(default='present', choices=['present', 'absent'], type='str'),
             address=dict(type='str'),
-            address_type=dict(default='EXTERNAL', type='str', choices=['INTERNAL', 'EXTERNAL']),
+            address_type=dict(default='EXTERNAL', type='str'),
             description=dict(type='str'),
             name=dict(required=True, type='str'),
-            network_tier=dict(type='str', choices=['PREMIUM', 'STANDARD']),
-            subnetwork=dict(),
+            network_tier=dict(type='str'),
+            subnetwork=dict(type='dict'),
             region=dict(required=True, type='str'),
         )
     )
@@ -261,7 +258,8 @@ def create(module, link, kind):
 
 
 def update(module, link, kind):
-    module.fail_json(msg="Address cannot be edited")
+    delete(module, self_link(module), kind)
+    create(module, collection(module), kind)
 
 
 def delete(module, link, kind):

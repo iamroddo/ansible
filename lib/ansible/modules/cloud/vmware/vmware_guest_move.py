@@ -80,7 +80,7 @@ EXAMPLES = r'''
     datacenter: datacenter
     validate_certs: no
     name: testvm-1
-    dest_folder: /"{{ datacenter }}"/vm
+    dest_folder: "/{{ datacenter }}/vm"
   delegate_to: localhost
 
 - name: Get VM UUID
@@ -90,7 +90,7 @@ EXAMPLES = r'''
     password: "{{ vcenter_password }}"
     validate_certs: no
     datacenter: "{{ datacenter }}"
-    folder: /"{{datacenter}}"/vm
+    folder: "/{{datacenter}}/vm"
     name: "{{ vm_name }}"
   delegate_to: localhost
   register: vm_facts
@@ -180,7 +180,15 @@ def main():
         datacenter=dict(type='str', required=True),
     )
     module = AnsibleModule(
-        argument_spec=argument_spec, required_one_of=[['name', 'uuid']])
+        argument_spec=argument_spec,
+        required_one_of=[
+            ['name', 'uuid']
+        ],
+        mutually_exclusive=[
+            ['name', 'uuid']
+        ],
+        supports_check_mode=True
+    )
 
     # FindByInventoryPath() does not require an absolute path
     # so we should leave the input folder path unmodified
@@ -195,12 +203,18 @@ def main():
     if vm:
         try:
             vm_path = pyv.get_vm_path(pyv.content, vm).lstrip('/')
-            vm_full = vm_path + '/' + module.params['name']
-            folder = search_index.FindByInventoryPath(
-                module.params['dest_folder'])
+            if module.params['name']:
+                vm_name = module.params['name']
+            else:
+                vm_name = vm.name
+
+            vm_full = vm_path + '/' + vm_name
+            folder = search_index.FindByInventoryPath(module.params['dest_folder'])
             if folder is None:
                 module.fail_json(msg="Folder name and/or path does not exist")
             vm_to_move = search_index.FindByInventoryPath(vm_full)
+            if module.check_mode:
+                module.exit_json(changed=True, instance=pyv.gather_facts(vm))
             if vm_path != module.params['dest_folder'].lstrip('/'):
                 move_task = folder.MoveInto([vm_to_move])
                 changed, err = wait_for_task(move_task)
@@ -213,6 +227,8 @@ def main():
             module.fail_json(msg="Failed to move VM with exception %s" %
                              to_native(exc))
     else:
+        if module.check_mode:
+            module.exit_json(changed=False)
         module.fail_json(msg="Unable to find VM %s to move to %s" % (
             (module.params.get('uuid') or module.params.get('name')),
             module.params.get('dest_folder')))

@@ -42,7 +42,7 @@ requirements:
 options:
   filters:
     description:
-    - A list of filter value pairs. Available filters are listed here U(https://cloud.google.com/sdk/gcloud/reference/topic/filters.)
+    - A list of filter value pairs. Available filters are listed here U(https://cloud.google.com/sdk/gcloud/reference/topic/filters).
     - Each additional filter in the list will act be added as an AND condition (filter1
       and filter2) .
   region:
@@ -65,8 +65,8 @@ EXAMPLES = '''
 '''
 
 RETURN = '''
-items:
-  description: List of items
+resources:
+  description: List of resources
   returned: always
   type: complex
   contains:
@@ -93,12 +93,12 @@ items:
       description:
       - URL of the Target VPN gateway with which this VPN tunnel is associated.
       returned: success
-      type: str
+      type: dict
     router:
       description:
       - URL of router resource to be used for dynamic routing.
       returned: success
-      type: str
+      type: dict
     peerIp:
       description:
       - IP address of the peer VPN gateway. Only IPv4 is supported.
@@ -138,17 +138,6 @@ items:
       - Only IPv4 is supported.
       returned: success
       type: list
-    labels:
-      description:
-      - Labels to apply to this VpnTunnel.
-      returned: success
-      type: dict
-    labelFingerprint:
-      description:
-      - The fingerprint used for optimistic locking of this resource. Used internally
-        during updates.
-      returned: success
-      type: str
     region:
       description:
       - The region where the tunnel is located.
@@ -178,7 +167,7 @@ def main():
         items = items.get('items')
     else:
         items = []
-    return_value = {'items': items}
+    return_value = {'resources': items}
     module.exit_json(**return_value)
 
 

@@ -157,18 +157,14 @@ options:
           SCSI or NVME. The default is SCSI.
         - Persistent disks must always use SCSI and the request will fail if you attempt
           to attach a persistent disk in any other format than SCSI.
+        - 'Some valid choices include: "SCSI", "NVME"'
         required: false
-        choices:
-        - SCSI
-        - NVME
       mode:
         description:
         - The mode in which to attach this disk, either READ_WRITE or READ_ONLY. If
           not specified, the default is to attach the disk in READ_WRITE mode.
+        - 'Some valid choices include: "READ_WRITE", "READ_ONLY"'
         required: false
-        choices:
-        - READ_WRITE
-        - READ_ONLY
       source:
         description:
         - Reference to a disk. When creating a new instance, one of initializeParams.sourceImage
@@ -176,18 +172,17 @@ options:
         - If desired, you can also attach existing non-root persistent disks using
           this property. This field is only applicable for persistent disks.
         - 'This field represents a link to a Disk resource in GCP. It can be specified
-          in two ways. First, you can place in the selfLink of the resource here as
-          a string Alternatively, you can add `register: name-of-resource` to a gcp_compute_disk
-          task and then set this source field to "{{ name-of-resource }}"'
+          in two ways. First, you can place a dictionary with key ''selfLink'' and
+          value of your resource''s selfLink Alternatively, you can add `register:
+          name-of-resource` to a gcp_compute_disk task and then set this source field
+          to "{{ name-of-resource }}"'
         required: false
       type:
         description:
         - Specifies the type of the disk, either SCRATCH or PERSISTENT. If not specified,
           the default is PERSISTENT.
+        - 'Some valid choices include: "SCRATCH", "PERSISTENT"'
         required: false
-        choices:
-        - SCRATCH
-        - PERSISTENT
   guest_accelerators:
     description:
     - List of the type and count of accelerator cards attached to the instance .
@@ -201,14 +196,11 @@ options:
         description:
         - Full or partial URL of the accelerator type resource to expose to this instance.
         required: false
-  label_fingerprint:
+  labels:
     description:
-    - A fingerprint for this request, which is essentially a hash of the metadata's
-      contents and used for optimistic locking. The fingerprint is initially generated
-      by Compute Engine and changes after every request to modify or update metadata.
-      You must always provide an up-to-date fingerprint hash in order to update or
-      change metadata.
+    - Labels to apply to this instance. A list of key->value pairs.
     required: false
+    version_added: 2.9
   metadata:
     description:
     - The metadata key/value pairs to assign to instances that are created from this
@@ -261,17 +253,16 @@ options:
               address pool. If you specify a static external IP address, it must live
               in the same region as the zone of the instance.
             - 'This field represents a link to a Address resource in GCP. It can be
-              specified in two ways. First, you can place in the address of the resource
-              here as a string Alternatively, you can add `register: name-of-resource`
-              to a gcp_compute_address task and then set this nat_ip field to "{{
-              name-of-resource }}"'
+              specified in two ways. First, you can place a dictionary with key ''address''
+              and value of your resource''s address Alternatively, you can add `register:
+              name-of-resource` to a gcp_compute_address task and then set this nat_ip
+              field to "{{ name-of-resource }}"'
             required: false
           type:
             description:
             - The type of configuration. The default and only option is ONE_TO_ONE_NAT.
+            - 'Some valid choices include: "ONE_TO_ONE_NAT"'
             required: true
-            choices:
-            - ONE_TO_ONE_NAT
       alias_ip_ranges:
         description:
         - An array of alias IP ranges for this network interface. Can only be specified
@@ -299,9 +290,10 @@ options:
           global/networks/default is used; if the network is not specified but the
           subnetwork is specified, the network is inferred.
         - 'This field represents a link to a Network resource in GCP. It can be specified
-          in two ways. First, you can place in the selfLink of the resource here as
-          a string Alternatively, you can add `register: name-of-resource` to a gcp_compute_network
-          task and then set this network field to "{{ name-of-resource }}"'
+          in two ways. First, you can place a dictionary with key ''selfLink'' and
+          value of your resource''s selfLink Alternatively, you can add `register:
+          name-of-resource` to a gcp_compute_network task and then set this network
+          field to "{{ name-of-resource }}"'
         required: false
       network_ip:
         description:
@@ -316,10 +308,10 @@ options:
           If the network is in auto subnet mode, providing the subnetwork is optional.
           If the network is in custom subnet mode, then this field should be specified.
         - 'This field represents a link to a Subnetwork resource in GCP. It can be
-          specified in two ways. First, you can place in the selfLink of the resource
-          here as a string Alternatively, you can add `register: name-of-resource`
-          to a gcp_compute_subnetwork task and then set this subnetwork field to "{{
-          name-of-resource }}"'
+          specified in two ways. First, you can place a dictionary with key ''selfLink''
+          and value of your resource''s selfLink Alternatively, you can add `register:
+          name-of-resource` to a gcp_compute_subnetwork task and then set this subnetwork
+          field to "{{ name-of-resource }}"'
         required: false
   scheduling:
     description:
@@ -368,16 +360,10 @@ options:
       RUNNING, STOPPING, SUSPENDING, SUSPENDED, and TERMINATED.'
     - As a user, use RUNNING to keep a machine "on" and TERMINATED to turn a machine
       off .
+    - 'Some valid choices include: "PROVISIONING", "STAGING", "RUNNING", "STOPPING",
+      "SUSPENDING", "SUSPENDED", "TERMINATED"'
     required: false
     version_added: 2.8
-    choices:
-    - PROVISIONING
-    - STAGING
-    - RUNNING
-    - STOPPING
-    - SUSPENDING
-    - SUSPENDED
-    - TERMINATED
   tags:
     description:
     - A list of tags to apply to this instance. Tags are used to identify valid sources
@@ -449,6 +435,8 @@ EXAMPLES = '''
     metadata:
       startup-script-url: gs:://graphite-playground/bootstrap.sh
       cost-center: '12345'
+    labels:
+      environment: production
     network_interfaces:
     - network: "{{ network }}"
       access_configs:
@@ -617,7 +605,7 @@ disks:
       - If desired, you can also attach existing non-root persistent disks using this
         property. This field is only applicable for persistent disks.
       returned: success
-      type: str
+      type: dict
     type:
       description:
       - Specifies the type of the disk, either SCRATCH or PERSISTENT. If not specified,
@@ -647,13 +635,15 @@ id:
   type: int
 labelFingerprint:
   description:
-  - A fingerprint for this request, which is essentially a hash of the metadata's
-    contents and used for optimistic locking. The fingerprint is initially generated
-    by Compute Engine and changes after every request to modify or update metadata.
-    You must always provide an up-to-date fingerprint hash in order to update or change
-    metadata.
+  - The fingerprint used for optimistic locking of this resource. Used internally
+    during updates.
   returned: success
   type: str
+labels:
+  description:
+  - Labels to apply to this instance. A list of key->value pairs.
+  returned: success
+  type: dict
 metadata:
   description:
   - The metadata key/value pairs to assign to instances that are created from this
@@ -713,7 +703,7 @@ networkInterfaces:
             address pool. If you specify a static external IP address, it must live
             in the same region as the zone of the instance.
           returned: success
-          type: str
+          type: dict
         type:
           description:
           - The type of configuration. The default and only option is ONE_TO_ONE_NAT.
@@ -755,7 +745,7 @@ networkInterfaces:
         is used; if the network is not specified but the subnetwork is specified,
         the network is inferred.
       returned: success
-      type: str
+      type: dict
     networkIP:
       description:
       - An IPv4 internal network address to assign to the instance for this network
@@ -770,7 +760,7 @@ networkInterfaces:
         the network is in auto subnet mode, providing the subnetwork is optional.
         If the network is in custom subnet mode, then this field should be specified.
       returned: success
-      type: str
+      type: dict
 scheduling:
   description:
   - Sets the scheduling options for this instance.
@@ -899,14 +889,14 @@ def main():
                             source_image_encryption_key=dict(type='dict', options=dict(raw_key=dict(type='str'))),
                         ),
                     ),
-                    interface=dict(type='str', choices=['SCSI', 'NVME']),
-                    mode=dict(type='str', choices=['READ_WRITE', 'READ_ONLY']),
-                    source=dict(),
-                    type=dict(type='str', choices=['SCRATCH', 'PERSISTENT']),
+                    interface=dict(type='str'),
+                    mode=dict(type='str'),
+                    source=dict(type='dict'),
+                    type=dict(type='str'),
                 ),
             ),
             guest_accelerators=dict(type='list', elements='dict', options=dict(accelerator_count=dict(type='int'), accelerator_type=dict(type='str'))),
-            label_fingerprint=dict(type='str'),
+            labels=dict(type='dict'),
             metadata=dict(type='dict'),
             machine_type=dict(type='str'),
             min_cpu_platform=dict(type='str'),
@@ -918,19 +908,19 @@ def main():
                     access_configs=dict(
                         type='list',
                         elements='dict',
-                        options=dict(name=dict(required=True, type='str'), nat_ip=dict(), type=dict(required=True, type='str', choices=['ONE_TO_ONE_NAT'])),
+                        options=dict(name=dict(required=True, type='str'), nat_ip=dict(type='dict'), type=dict(required=True, type='str')),
                     ),
                     alias_ip_ranges=dict(type='list', elements='dict', options=dict(ip_cidr_range=dict(type='str'), subnetwork_range_name=dict(type='str'))),
-                    network=dict(),
+                    network=dict(type='dict'),
                     network_ip=dict(type='str'),
-                    subnetwork=dict(),
+                    subnetwork=dict(type='dict'),
                 ),
             ),
             scheduling=dict(
                 type='dict', options=dict(automatic_restart=dict(type='bool'), on_host_maintenance=dict(type='str'), preemptible=dict(type='bool'))
             ),
             service_accounts=dict(type='list', elements='dict', options=dict(email=dict(type='str'), scopes=dict(type='list', elements='str'))),
-            status=dict(type='str', choices=['PROVISIONING', 'STAGING', 'RUNNING', 'STOPPING', 'SUSPENDING', 'SUSPENDED', 'TERMINATED']),
+            status=dict(type='str'),
             tags=dict(type='dict', options=dict(fingerprint=dict(type='str'), items=dict(type='list', elements='str'))),
             zone=dict(required=True, type='str'),
         )
@@ -983,8 +973,18 @@ def update(module, link, kind, fetch):
 
 
 def update_fields(module, request, response):
+    if response.get('labels') != request.get('labels'):
+        label_fingerprint_update(module, request, response)
     if response.get('machineType') != request.get('machineType'):
         machine_type_update(module, request, response)
+
+
+def label_fingerprint_update(module, request, response):
+    auth = GcpSession(module, 'compute')
+    auth.post(
+        ''.join(["https://www.googleapis.com/compute/v1/", "projects/{project}/zones/{zone}/instances/{name}/setLabels"]).format(**module.params),
+        {u'labelFingerprint': response.get('labelFingerprint'), u'labels': module.params.get('labels')},
+    )
 
 
 def machine_type_update(module, request, response):
@@ -1006,7 +1006,7 @@ def resource_to_request(module):
         u'canIpForward': module.params.get('can_ip_forward'),
         u'disks': InstanceDisksArray(module.params.get('disks', []), module).to_request(),
         u'guestAccelerators': InstanceGuestacceleratorsArray(module.params.get('guest_accelerators', []), module).to_request(),
-        u'labelFingerprint': module.params.get('label_fingerprint'),
+        u'labels': module.params.get('labels'),
         u'metadata': module.params.get('metadata'),
         u'machineType': machine_type_selflink(module.params.get('machine_type'), module.params),
         u'minCpuPlatform': module.params.get('min_cpu_platform'),
@@ -1092,6 +1092,7 @@ def response_to_hash(module, response):
         u'guestAccelerators': InstanceGuestacceleratorsArray(response.get(u'guestAccelerators', []), module).from_response(),
         u'id': response.get(u'id'),
         u'labelFingerprint': response.get(u'labelFingerprint'),
+        u'labels': response.get(u'labels'),
         u'metadata': response.get(u'metadata'),
         u'machineType': response.get(u'machineType'),
         u'minCpuPlatform': response.get(u'minCpuPlatform'),
@@ -1108,7 +1109,7 @@ def response_to_hash(module, response):
 def disk_type_selflink(name, params):
     if name is None:
         return
-    url = r"https://www.googleapis.com/compute/v1/projects/.*/zones/[a-z1-9\-]*/diskTypes/[a-z1-9\-]*"
+    url = r"https://www.googleapis.com/compute/v1/projects/.*/zones/.*/diskTypes/.*"
     if not re.match(url, name):
         name = "https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/diskTypes/%s".format(**params) % name
     return name
@@ -1117,7 +1118,7 @@ def disk_type_selflink(name, params):
 def machine_type_selflink(name, params):
     if name is None:
         return
-    url = r"https://www.googleapis.com/compute/v1/projects/.*/zones/[a-z1-9\-]*/machineTypes/[a-z1-9\-]*"
+    url = r"https://www.googleapis.com/compute/v1/projects/.*/zones/.*/machineTypes/.*"
     if not re.match(url, name):
         name = "https://www.googleapis.com/compute/v1/projects/{project}/zones/{zone}/machineTypes/%s".format(**params) % name
     return name
@@ -1298,14 +1299,10 @@ class InstanceDiskencryptionkey(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict(
-            {u'rawKey': self.request.get('raw_key'), u'rsaEncryptedKey': self.request.get('rsa_encrypted_key'), u'sha256': self.request.get('sha256')}
-        )
+        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key'), u'rsaEncryptedKey': self.request.get('rsa_encrypted_key')})
 
     def from_response(self):
-        return remove_nones_from_dict(
-            {u'rawKey': self.request.get(u'rawKey'), u'rsaEncryptedKey': self.request.get(u'rsaEncryptedKey'), u'sha256': self.request.get(u'sha256')}
-        )
+        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey'), u'rsaEncryptedKey': self.request.get(u'rsaEncryptedKey')})
 
 
 class InstanceInitializeparams(object):
@@ -1348,10 +1345,10 @@ class InstanceSourceimageencryptionkey(object):
             self.request = {}
 
     def to_request(self):
-        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key'), u'sha256': self.request.get('sha256')})
+        return remove_nones_from_dict({u'rawKey': self.request.get('raw_key')})
 
     def from_response(self):
-        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey'), u'sha256': self.request.get(u'sha256')})
+        return remove_nones_from_dict({u'rawKey': self.request.get(u'rawKey')})
 
 
 class InstanceGuestacceleratorsArray(object):
@@ -1406,7 +1403,6 @@ class InstanceNetworkinterfacesArray(object):
             {
                 u'accessConfigs': InstanceAccessconfigsArray(item.get('access_configs', []), self.module).to_request(),
                 u'aliasIpRanges': InstanceAliasiprangesArray(item.get('alias_ip_ranges', []), self.module).to_request(),
-                u'name': item.get('name'),
                 u'network': replace_resource_dict(item.get(u'network', {}), 'selfLink'),
                 u'networkIP': item.get('network_ip'),
                 u'subnetwork': replace_resource_dict(item.get(u'subnetwork', {}), 'selfLink'),
@@ -1418,7 +1414,6 @@ class InstanceNetworkinterfacesArray(object):
             {
                 u'accessConfigs': InstanceAccessconfigsArray(item.get(u'accessConfigs', []), self.module).from_response(),
                 u'aliasIpRanges': InstanceAliasiprangesArray(item.get(u'aliasIpRanges', []), self.module).from_response(),
-                u'name': item.get(u'name'),
                 u'network': item.get(u'network'),
                 u'networkIP': item.get(u'networkIP'),
                 u'subnetwork': item.get(u'subnetwork'),

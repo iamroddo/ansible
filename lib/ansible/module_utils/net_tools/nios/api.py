@@ -67,7 +67,7 @@ NIOS_PROVIDER_SPEC = {
     'host': dict(fallback=(env_fallback, ['INFOBLOX_HOST'])),
     'username': dict(fallback=(env_fallback, ['INFOBLOX_USERNAME'])),
     'password': dict(fallback=(env_fallback, ['INFOBLOX_PASSWORD']), no_log=True),
-    'ssl_verify': dict(type='bool', default=False, fallback=(env_fallback, ['INFOBLOX_SSL_VERIFY'])),
+    'validate_certs': dict(type='bool', default=False, fallback=(env_fallback, ['INFOBLOX_SSL_VERIFY']), aliases=['ssl_verify']),
     'silent_ssl_warnings': dict(type='bool', default=True),
     'http_request_timeout': dict(type='int', default=10, fallback=(env_fallback, ['INFOBLOX_HTTP_REQUEST_TIMEOUT'])),
     'http_pool_connections': dict(type='int', default=10),
@@ -89,7 +89,7 @@ def get_connector(*args, **kwargs):
                         'to be installed.  It can be installed using the '
                         'command `pip install infoblox-client`')
 
-    if not set(kwargs.keys()).issubset(NIOS_PROVIDER_SPEC.keys()):
+    if not set(kwargs.keys()).issubset(list(NIOS_PROVIDER_SPEC.keys()) + ['ssl_verify']):
         raise Exception('invalid or unsupported keyword argument for connector')
     for key, value in iteritems(NIOS_PROVIDER_SPEC):
         if key not in kwargs:
@@ -103,6 +103,10 @@ def get_connector(*args, **kwargs):
             env = ('INFOBLOX_%s' % key).upper()
             if env in os.environ:
                 kwargs[key] = os.environ.get(env)
+
+    if 'validate_certs' in kwargs.keys():
+        kwargs['ssl_verify'] = kwargs['validate_certs']
+        kwargs.pop('validate_certs', None)
 
     return Connector(kwargs)
 
@@ -147,8 +151,16 @@ def member_normalize(member_spec):
     It will remove any arguments that are set to None since WAPI will error on
     that condition.
     The remainder of the value validation is performed by WAPI
+    Some parameters in ib_spec are passed as a list in order to pass the validation for elements.
+    In this function, they are converted to dictionary.
     '''
+    member_elements = ['vip_setting', 'ipv6_setting', 'lan2_port_setting', 'mgmt_port_setting',
+                       'pre_provisioning', 'network_setting', 'v6_network_setting',
+                       'ha_port_setting', 'lan_port_setting', 'lan2_physical_setting',
+                       'lan_ha_port_setting', 'mgmt_network_setting', 'v6_mgmt_network_setting']
     for key in member_spec.keys():
+        if key in member_elements and member_spec[key] is not None:
+            member_spec[key] = member_spec[key][0]
         if isinstance(member_spec[key], dict):
             member_spec[key] = member_normalize(member_spec[key])
         elif isinstance(member_spec[key], list):
@@ -253,17 +265,34 @@ class WapiModule(WapiBase):
                 else:
                     proposed_object[key] = self.module.params[key]
 
+        # If configure_by_dns is set to False, then delete the default dns set in the param else throw exception
+        if not proposed_object.get('configure_for_dns') and proposed_object.get('view') == 'default'\
+                and ib_obj_type == NIOS_HOST_RECORD:
+            del proposed_object['view']
+        elif not proposed_object.get('configure_for_dns') and proposed_object.get('view') != 'default'\
+                and ib_obj_type == NIOS_HOST_RECORD:
+            self.module.fail_json(msg='DNS Bypass is not allowed if DNS view is set other than \'default\'')
+
         if ib_obj_ref:
             if len(ib_obj_ref) > 1:
                 for each in ib_obj_ref:
-                    if ('ipv4addr' in each) and ('ipv4addr' in proposed_object)\
-                            and each['ipv4addr'] == proposed_object['ipv4addr']:
+                    # To check for existing A_record with same name with input A_record by IP
+                    if each.get('ipv4addr') and each.get('ipv4addr') == proposed_object.get('ipv4addr'):
                         current_object = each
+                    # To check for existing Host_record with same name with input Host_record by IP
+                    elif each.get('ipv4addrs')[0].get('ipv4addr') and each.get('ipv4addrs')[0].get('ipv4addr')\
+                            == proposed_object.get('ipv4addrs')[0].get('ipv4addr'):
+                        current_object = each
+                    # Else set the current_object with input value
+                    else:
+                        current_object = obj_filter
+                        ref = None
             else:
                 current_object = ib_obj_ref[0]
             if 'extattrs' in current_object:
                 current_object['extattrs'] = flatten_extattrs(current_object['extattrs'])
-            ref = current_object.pop('_ref')
+            if current_object.get('_ref'):
+                ref = current_object.pop('_ref')
         else:
             current_object = obj_filter
             ref = None
@@ -443,8 +472,8 @@ class WapiModule(WapiBase):
             temp = ib_spec['restart_if_needed']
             del ib_spec['restart_if_needed']
             ib_obj = self.get_object(ib_obj_type, obj_filter.copy(), return_fields=ib_spec.keys())
-            # reinstate restart_if_needed key if it's set to true in play
-            if module.params['restart_if_needed']:
+            # reinstate restart_if_needed if ib_obj is none, meaning there's no existing nios_zone ref
+            if not ib_obj:
                 ib_spec['restart_if_needed'] = temp
         elif (ib_obj_type == NIOS_MEMBER):
             # del key 'create_token' as nios_member get_object fails with the key present

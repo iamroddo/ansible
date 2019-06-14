@@ -59,7 +59,8 @@ options:
         type: list
       dockerfile:
         description:
-          - Use with state C(present) to provide an alternate name for the Dockerfile to use when building an image.
+          - Use with state C(present) and source C(build) to provide an alternate name for the Dockerfile to use when building an image.
+          - This can also include a relative path (relative to I(path)).
         type: str
       http_timeout:
         description:
@@ -75,8 +76,8 @@ options:
       pull:
         description:
           - When building an image downloads any updates to the FROM image in Dockerfile.
+          - The default is currently C(yes). This will change to C(no) in Ansible 2.12.
         type: bool
-        default: yes
       rm:
         description:
           - Remove intermediate containers after build.
@@ -118,6 +119,13 @@ options:
             description:
               - CPUs in which to allow execution, e.g., "0-3", "0,1".
             type: str
+      use_config_proxy:
+        description:
+          - If set to `yes` and a proxy configuration is specified in the docker client configuration
+            (by default C($HOME/.docker/config.json)), the corresponding environment variables will
+            be set in the container being built.
+          - Needs Docker SDK for Python >= 3.7.0.
+        type: bool
     version_added: "2.8"
   archive_path:
     description:
@@ -135,7 +143,8 @@ options:
     version_added: "2.2"
   dockerfile:
     description:
-      - Use with state C(present) to provide an alternate name for the Dockerfile to use when building an image.
+      - Use with state C(present) and source C(build) to provide an alternate name for the Dockerfile to use when building an image.
+      - This can also include a relative path (relative to I(path)).
       - Please use I(build.dockerfile) instead. This option will be removed in Ansible 2.12.
     type: str
     version_added: "2.0"
@@ -165,9 +174,6 @@ options:
   force_tag:
     description:
       - Use with state C(present) to force tagging an image.
-      - Please stop using this option, and use the more specialized force options
-        I(force_source), I(force_absent) and I(force_tag) instead.
-      - This option will be removed in Ansible 2.12.
     type: bool
     default: false
     version_added: "2.8"
@@ -200,8 +206,8 @@ options:
     description:
       - When building an image downloads any updates to the FROM image in Dockerfile.
       - Please use I(build.pull) instead. This option will be removed in Ansible 2.12.
+      - The default is currently C(yes). This will change to C(no) in Ansible 2.12.
     type: bool
-    default: yes
     version_added: "2.1"
   push:
     description:
@@ -234,11 +240,13 @@ options:
       - When C(absent) an image will be removed. Use the force option to un-tag and remove all images
         matching the provided name.
       - When C(present) check if an image exists using the provided name and tag. If the image is not found or the
-        force option is used, the image will either be pulled, built or loaded. By default the image will be pulled
-        from Docker Hub. To build the image, provide a path value set to a directory containing a context and
-        Dockerfile. To load an image, specify load_path to provide a path to an archive file. To tag an image to a
-        repository, provide a repository path. If the name contains a repository path, it will be pushed.
-      - "NOTE: C(build) is DEPRECATED and will be removed in release 2.11. Specifying C(build) will behave the
+        force option is used, the image will either be pulled, built or loaded, depending on the I(source) option.
+      - By default the image will be pulled from Docker Hub, or the registry specified in the image's name. Note that
+        this will change in Ansible 2.12, so to make sure that you are pulling, set I(source) to C(pull). To build
+        the image, provide a I(path) value set to a directory containing a context and Dockerfile, and set I(source)
+        to C(build). To load an image, specify I(load_path) to provide a path to an archive file. To tag an image to
+        a repository, provide a I(repository) path. If the name contains a repository path, it will be pushed.
+      - "NOTE: C(state=build) is DEPRECATED and will be removed in release 2.11. Specifying C(build) will behave the
          same as C(present)."
     type: str
     default: present
@@ -286,7 +294,7 @@ options:
     version_added: "2.1"
   use_tls:
     description:
-      - "DEPRECATED. Whether to use tls to connect to the docker server. Set to
+      - "DEPRECATED. Whether to use tls to connect to the docker daemon. Set to
         C(encrypt) to use TLS. And set to C(verify) to use TLS and verify that
         the server's certificate is valid for the server."
       - "NOTE: If you specify this option, it will set the value of the I(tls) or
@@ -304,7 +312,7 @@ extends_documentation_fragment:
   - docker.docker_py_1_documentation
 
 requirements:
-  - "docker-py >= 1.8.0"
+  - "L(Docker SDK for Python,https://docker-py.readthedocs.io/en/stable/) >= 1.8.0 (use L(docker-py,https://pypi.org/project/docker-py/) for Python 2.6)"
   - "Docker API >= 1.20"
 
 author:
@@ -405,20 +413,23 @@ image:
 import os
 import re
 
+from distutils.version import LooseVersion
+
 from ansible.module_utils.docker.common import (
-    HAS_DOCKER_PY_2, HAS_DOCKER_PY_3, AnsibleDockerClient, DockerBaseClass, is_image_name_id,
+    docker_version, AnsibleDockerClient, DockerBaseClass, is_image_name_id,
 )
 from ansible.module_utils._text import to_native
 
-try:
-    if HAS_DOCKER_PY_2 or HAS_DOCKER_PY_3:
-        from docker.auth import resolve_repository_name
-    else:
-        from docker.auth.auth import resolve_repository_name
-    from docker.utils.utils import parse_repository_tag
-except ImportError:
-    # missing docker-py handled in docker_common
-    pass
+if docker_version is not None:
+    try:
+        if LooseVersion(docker_version) >= LooseVersion('2.0.0'):
+            from docker.auth import resolve_repository_name
+        else:
+            from docker.auth.auth import resolve_repository_name
+        from docker.utils.utils import parse_repository_tag
+    except ImportError:
+        # missing Docker SDK for Python handled in module_utils.docker.common
+        pass
 
 
 class ImageManager(DockerBaseClass):
@@ -444,16 +455,17 @@ class ImageManager(DockerBaseClass):
         self.load_path = parameters.get('load_path')
         self.name = parameters.get('name')
         self.network = build.get('network')
-        self.nocache = build.get('nocache')
+        self.nocache = build.get('nocache', False)
         self.build_path = build.get('path')
         self.pull = build.get('pull')
         self.repository = parameters.get('repository')
-        self.rm = build.get('rm')
+        self.rm = build.get('rm', True)
         self.state = parameters.get('state')
         self.tag = parameters.get('tag')
         self.http_timeout = build.get('http_timeout')
         self.push = parameters.get('push')
         self.buildargs = build.get('args')
+        self.use_config_proxy = build.get('use_config_proxy')
 
         # If name contains a tag, it takes precedence over tag parameter.
         if not is_image_name_id(self.name):
@@ -579,7 +591,7 @@ class ImageManager(DockerBaseClass):
 
             try:
                 with open(self.archive_path, 'wb') as fd:
-                    if HAS_DOCKER_PY_3:
+                    if self.client.docker_py_version >= LooseVersion('3.0.0'):
                         for chunk in image:
                             fd.write(chunk)
                     else:
@@ -696,7 +708,7 @@ class ImageManager(DockerBaseClass):
             dockerfile=self.dockerfile,
             decode=True,
         )
-        if not HAS_DOCKER_PY_3:
+        if self.client.docker_py_version < LooseVersion('3.0.0'):
             params['stream'] = True
         build_output = []
         if self.tag:
@@ -711,6 +723,12 @@ class ImageManager(DockerBaseClass):
             params['cache_from'] = self.cache_from
         if self.network:
             params['network_mode'] = self.network
+        if self.use_config_proxy:
+            params['use_config_proxy'] = self.use_config_proxy
+            # Due to a bug in docker-py, it will crash if
+            # use_config_proxy is True and buildargs is None
+            if 'buildargs' not in params:
+                params['buildargs'] = {}
 
         for line in self.client.build(**params):
             # line = json.loads(line)
@@ -773,9 +791,10 @@ def main():
             network=dict(type='str'),
             nocache=dict(type='bool', default=False),
             path=dict(type='path', required=True),
-            pull=dict(type='bool', default=True),
+            pull=dict(type='bool'),
             rm=dict(type='bool', default=True),
             args=dict(type='dict'),
+            use_config_proxy=dict(type='bool'),
         )),
         archive_path=dict(type='path'),
         container_limits=dict(type='dict', options=dict(
@@ -794,7 +813,7 @@ def main():
         name=dict(type='str', required=True),
         nocache=dict(type='bool', default=False, removedin_version='2.12'),
         path=dict(type='path', aliases=['build_path'], removedin_version='2.12'),
-        pull=dict(type='bool', default=True, removedin_version='2.12'),
+        pull=dict(type='bool', removedin_version='2.12'),
         push=dict(type='bool', default=False),
         repository=dict(type='str'),
         rm=dict(type='bool', default=True, removedin_version='2.12'),
@@ -811,14 +830,18 @@ def main():
     ]
 
     def detect_build_cache_from(client):
-        return bool(client.params['build'] and client.params['build']['cache_from'] is not None)
+        return client.module.params['build'] and client.module.params['build'].get('cache_from') is not None
 
     def detect_build_network(client):
-        return bool(client.params['build'] and client.params['build']['network'] is not None)
+        return client.module.params['build'] and client.module.params['build'].get('network') is not None
+
+    def detect_use_config_proxy(client):
+        return client.module.params['build'] and client.module.params['build'].get('use_config_proxy') is not None
 
     option_minimal_versions = dict()
     option_minimal_versions["build.cache_from"] = dict(docker_py_version='2.1.0', docker_api_version='1.25', detect_usage=detect_build_cache_from)
     option_minimal_versions["build.network"] = dict(docker_py_version='2.4.0', docker_api_version='1.25', detect_usage=detect_build_network)
+    option_minimal_versions["build.use_config_proxy"] = dict(docker_py_version='3.7.0', detect_usage=detect_use_config_proxy)
 
     client = AnsibleDockerClient(
         argument_spec=argument_spec,
@@ -851,21 +874,25 @@ def main():
     )
     for option, build_option in build_options.items():
         default_value = None
-        if option in ('pull', 'rm'):
+        if option in ('rm', ):
             default_value = True
         elif option in ('nocache', ):
             default_value = False
         if client.module.params[option] != default_value:
             if client.module.params['build'] is None:
                 client.module.params['build'] = dict()
-            if client.module.params['build'].get(build_option) != default_value:
+            if client.module.params['build'].get(build_option, default_value) != default_value:
                 client.fail('Cannot specify both %s and build.%s!' % (option, build_option))
             client.module.params['build'][build_option] = client.module.params[option]
             client.module.warn('Please specify build.%s instead of %s. The %s option '
                                'has been renamed and will be removed in Ansible 2.12.' % (build_option, option, option))
-    if client.module.params['source'] == 'build' and \
-            (not client.module.params['build'] or not client.module.params['build'].get('path')):
-        client.module.fail('If "source" is set to "build", the "build.path" option must be specified.')
+    if client.module.params['source'] == 'build':
+        if (not client.module.params['build'] or not client.module.params['build'].get('path')):
+            client.fail('If "source" is set to "build", the "build.path" option must be specified.')
+        if client.module.params['build'].get('pull') is None:
+            client.module.warn("The default for build.pull is currently 'yes', but will be changed to 'no' in Ansible 2.12. "
+                               "Please set build.pull explicitly to the value you need.")
+            client.module.params['build']['pull'] = True  # TODO: change to False in Ansible 2.12
 
     if client.module.params['state'] == 'present' and client.module.params['source'] is None:
         # Autodetection. To be removed in Ansible 2.12.

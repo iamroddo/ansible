@@ -181,7 +181,7 @@ options:
     description:
       - Amount of time to wait for the dnf lockfile to be freed.
     required: false
-    default: 0
+    default: 30
     type: int
     version_added: "2.8"
   install_weak_deps:
@@ -285,6 +285,7 @@ EXAMPLES = '''
 
 import os
 import re
+import sys
 import tempfile
 
 try:
@@ -488,7 +489,7 @@ class DnfModule(YumDnf):
                     results=[],
                 )
 
-            self.module.run_command(['dnf', 'install', '-y', package], check_rc=True)
+            rc, stdout, stderr = self.module.run_command(['dnf', 'install', '-y', package])
             global dnf
             try:
                 import dnf
@@ -499,9 +500,15 @@ class DnfModule(YumDnf):
                 import dnf.util
             except ImportError:
                 self.module.fail_json(
-                    msg="Could not import the dnf python module. "
-                    "Please install `{0}` package.".format(package),
+                    msg="Could not import the dnf python module using {0} ({1}). "
+                        "Please install `{2}` package or ensure you have specified the "
+                        "correct ansible_python_interpreter.".format(sys.executable, sys.version.replace('\n', ''),
+                                                                     package),
                     results=[],
+                    cmd='dnf install -y {0}'.format(package),
+                    rc=rc,
+                    stdout=stdout,
+                    stderr=stderr,
                 )
 
     def _configure_base(self, base, conf_file, disable_gpg_check, installroot='/'):
@@ -600,13 +607,17 @@ class DnfModule(YumDnf):
         """Return a fully configured dnf Base object."""
         base = dnf.Base()
         self._configure_base(base, conf_file, disable_gpg_check, installroot)
-        self._specify_repositories(base, disablerepo, enablerepo)
         try:
             base.init_plugins(set(self.disable_plugin), set(self.enable_plugin))
             base.pre_configure_plugins()
+        except AttributeError:
+            pass  # older versions of dnf didn't require this and don't have these methods
+        self._specify_repositories(base, disablerepo, enablerepo)
+        try:
             base.configure_plugins()
         except AttributeError:
             pass  # older versions of dnf didn't require this and don't have these methods
+
         try:
             if self.update_cache:
                 try:
@@ -928,6 +939,7 @@ class DnfModule(YumDnf):
                             if not self._is_module_installed(module):
                                 response['results'].append("Module {0} installed.".format(module))
                             self.module_base.install([module])
+                            self.module_base.enable([module])
                         except dnf.exceptions.MarkingErrors as e:
                             failure_response['failures'].append(
                                 " ".join(
@@ -1066,8 +1078,9 @@ class DnfModule(YumDnf):
                         try:
                             if self._is_module_installed(module):
                                 response['results'].append("Module {0} removed.".format(module))
-                            self.module_base.disable([module])
                             self.module_base.remove([module])
+                            self.module_base.disable([module])
+                            self.module_base.reset([module])
                         except dnf.exceptions.MarkingErrors as e:
                             failure_response['failures'].append(
                                 " ".join(
@@ -1102,6 +1115,14 @@ class DnfModule(YumDnf):
 
                 installed = self.base.sack.query().installed()
                 for pkg_spec in pkg_specs:
+                    # short-circuit installed check for wildcard matching
+                    if '*' in pkg_spec:
+                        try:
+                            self.base.remove(pkg_spec)
+                        except dnf.exceptions.MarkingError as e:
+                            failure_response['failures'].append('{0} - {1}'.format(pkg_spec, to_native(e)))
+                        continue
+
                     installed_pkg = list(map(str, installed.filter(name=pkg_spec).run()))
                     if installed_pkg:
                         candidate_pkg = self._packagename_dict(installed_pkg[0])

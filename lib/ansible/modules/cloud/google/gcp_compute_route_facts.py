@@ -42,7 +42,7 @@ requirements:
 options:
   filters:
     description:
-    - A list of filter value pairs. Available filters are listed here U(https://cloud.google.com/sdk/gcloud/reference/topic/filters.)
+    - A list of filter value pairs. Available filters are listed here U(https://cloud.google.com/sdk/gcloud/reference/topic/filters).
     - Each additional filter in the list will act be added as an AND condition (filter1
       and filter2) .
 extends_documentation_fragment: gcp
@@ -60,8 +60,8 @@ EXAMPLES = '''
 '''
 
 RETURN = '''
-items:
-  description: List of items
+resources:
+  description: List of resources
   returned: always
   type: complex
   contains:
@@ -91,7 +91,7 @@ items:
       description:
       - The network that this route applies to.
       returned: success
-      type: str
+      type: dict
     priority:
       description:
       - The priority of this route. Priority is used to break ties in cases where
@@ -122,7 +122,7 @@ items:
         instances/instance * projects/project/zones/zone/instances/instance * zones/zone/instances/instance
         .'
       returned: success
-      type: str
+      type: dict
     nextHopIp:
       description:
       - Network IP address of an instance that should handle matching packets.
@@ -132,7 +132,7 @@ items:
       description:
       - URL to a VpnTunnel that should handle matching packets.
       returned: success
-      type: str
+      type: dict
     nextHopNetwork:
       description:
       - URL to a Network that should handle matching packets.
@@ -162,7 +162,7 @@ def main():
         items = items.get('items')
     else:
         items = []
-    return_value = {'items': items}
+    return_value = {'resources': items}
     module.exit_json(**return_value)
 
 

@@ -56,7 +56,6 @@ options:
   description:
     description:
     - An optional description of this resource.
-    - Provide this property when you create the resource.
     required: false
   name:
     description:
@@ -69,23 +68,19 @@ options:
     required: true
   ip_version:
     description:
-    - The IP Version that will be used by this address. Valid options are IPV4 or
-      IPV6. The default value is IPV4.
+    - The IP Version that will be used by this address. Valid options are `IPV4` or
+      `IPV6`. The default value is `IPV4`.
+    - 'Some valid choices include: "IPV4", "IPV6"'
     required: false
-    choices:
-    - IPV4
-    - IPV6
   address_type:
     description:
     - The type of the address to reserve, default is EXTERNAL.
     - "* EXTERNAL indicates public/external single IP address."
     - "* INTERNAL indicates internal IP ranges belonging to some network."
+    - 'Some valid choices include: "EXTERNAL", "INTERNAL"'
     required: false
     default: EXTERNAL
     version_added: 2.8
-    choices:
-    - EXTERNAL
-    - INTERNAL
 extends_documentation_fragment: gcp
 notes:
 - 'API Reference: U(https://cloud.google.com/compute/docs/reference/v1/globalAddresses)'
@@ -116,7 +111,6 @@ creationTimestamp:
 description:
   description:
   - An optional description of this resource.
-  - Provide this property when you create the resource.
   returned: success
   type: str
 id:
@@ -136,8 +130,8 @@ name:
   type: str
 ipVersion:
   description:
-  - The IP Version that will be used by this address. Valid options are IPV4 or IPV6.
-    The default value is IPV4.
+  - The IP Version that will be used by this address. Valid options are `IPV4` or
+    `IPV6`. The default value is `IPV4`.
   returned: success
   type: str
 region:
@@ -177,8 +171,8 @@ def main():
             address=dict(type='str'),
             description=dict(type='str'),
             name=dict(required=True, type='str'),
-            ip_version=dict(type='str', choices=['IPV4', 'IPV6']),
-            address_type=dict(default='EXTERNAL', type='str', choices=['EXTERNAL', 'INTERNAL']),
+            ip_version=dict(type='str'),
+            address_type=dict(default='EXTERNAL', type='str'),
         )
     )
 
@@ -219,7 +213,8 @@ def create(module, link, kind):
 
 
 def update(module, link, kind):
-    module.fail_json(msg="GlobalAddress cannot be edited")
+    delete(module, self_link(module), kind)
+    create(module, collection(module), kind)
 
 
 def delete(module, link, kind):
@@ -314,7 +309,7 @@ def response_to_hash(module, response):
 def region_selflink(name, params):
     if name is None:
         return
-    url = r"https://www.googleapis.com/compute/v1/projects/.*/regions/[a-z1-9\-]*"
+    url = r"https://www.googleapis.com/compute/v1/projects/.*/regions/.*"
     if not re.match(url, name):
         name = "https://www.googleapis.com/compute/v1/projects/{project}/regions/%s".format(**params) % name
     return name

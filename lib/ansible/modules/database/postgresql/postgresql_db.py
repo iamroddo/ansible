@@ -17,14 +17,21 @@ module: postgresql_db
 short_description: Add or remove PostgreSQL databases from a remote host.
 description:
    - Add or remove PostgreSQL databases from a remote host.
-version_added: "0.6"
+version_added: '0.6'
 options:
   name:
     description:
-      - name of the database to add or remove
+      - Name of the database to add or remove
     type: str
     required: true
     aliases: [ db ]
+  port:
+    description:
+      - Database port to connect (if needed)
+    type: int
+    default: 5432
+    aliases:
+      - login_port
   owner:
     description:
       - Name of the role to set as owner of the database
@@ -51,13 +58,17 @@ options:
     - Switch to session_role after connecting. The specified session_role must be a role that the current login_user is a member of.
     - Permissions checking for SQL commands is carried out as though the session_role were the one that had logged in originally.
     type: str
-    version_added: "2.8"
+    version_added: '2.8'
   state:
     description:
     - The database state.
     - C(present) implies that the database should be created if necessary.
     - C(absent) implies that the database should be removed if present.
     - C(dump) requires a target definition to which the database will be backed up. (Added in Ansible 2.4)
+      Note that in some PostgreSQL versions of pg_dump, which is an embedded PostgreSQL utility and is used by the module,
+      returns rc 0 even when errors occurred (e.g. the connection is forbidden by pg_hba.conf, etc.),
+      so the module returns changed=True but the dump has not actually been done. Please, be sure that your version of
+      pg_dump returns rc 1 in this case.
     - C(restore) also requires a target definition from which the database will be restored. (Added in Ansible 2.4)
     - The format of the backup will be detected based on the target name.
     - Supported compression formats for dump and restore include C(.bz2), C(.gz) and C(.xz)
@@ -70,19 +81,32 @@ options:
     - File to back up or restore from.
     - Used when I(state) is C(dump) or C(restore).
     type: path
-    version_added: "2.4"
+    version_added: '2.4'
   target_opts:
     description:
     - Further arguments for pg_dump or pg_restore.
     - Used when I(state) is C(dump) or C(restore).
     type: str
-    version_added: "2.4"
+    version_added: '2.4'
   maintenance_db:
     description:
       - The value specifies the initial database (which is also called as maintenance DB) that Ansible connects to.
     type: str
     default: postgres
-    version_added: "2.5"
+    version_added: '2.5'
+  conn_limit:
+    description:
+      - Specifies the database connection limit.
+    type: str
+    version_added: '2.8'
+  tablespace:
+    description:
+      - The tablespace to set for the database
+        U(https://www.postgresql.org/docs/current/sql-alterdatabase.html).
+      - If you want to move the database back to the default tablespace,
+        explicitly set this to pg_default.
+    type: path
+    version_added: '2.9'
 notes:
 - State C(dump) and C(restore) don't require I(psycopg2) since version 2.8.
 author: "Ansible Core Team"
@@ -104,6 +128,12 @@ EXAMPLES = r'''
     lc_ctype: de_DE.UTF-8
     template: template0
 
+# Note: Default limit for the number of concurrent connections to a specific database is "-1", which means "unlimited"
+- name: Create a new database with name "acme" which has a limit of 100 concurrent connections
+  postgresql_db:
+    name: acme
+    conn_limit: "100"
+
 - name: Dump an existing database to a file
   postgresql_db:
     name: acme
@@ -122,42 +152,56 @@ EXAMPLES = r'''
     state: dump
     target: /tmp/acme.sql
     target_opts: "-n public"
+
+# Note: In the example below, if database foo exists and has another tablespace
+# the tablespace will be changed to foo. Access to the database will be locked
+# until the copying of database files is finished.
+- name: Create a new database called foo in tablespace bar
+  postgresql_db:
+    name: foo
+    tablespace: bar
 '''
 
 import os
-import pipes
 import subprocess
 import traceback
 
-PSYCOPG2_IMP_ERR = None
 try:
     import psycopg2
     import psycopg2.extras
 except ImportError:
-    PSYCOPG2_IMP_ERR = traceback.format_exc()
     HAS_PSYCOPG2 = False
 else:
     HAS_PSYCOPG2 = True
 
 import ansible.module_utils.postgres as pgutils
-from ansible.module_utils.basic import AnsibleModule, missing_required_lib
+from ansible.module_utils.basic import AnsibleModule
 from ansible.module_utils.database import SQLParseError, pg_quote_identifier
 from ansible.module_utils.six import iteritems
+from ansible.module_utils.six.moves import shlex_quote
 from ansible.module_utils._text import to_native
 
 
 class NotSupportedError(Exception):
     pass
 
-
 # ===========================================
 # PostgreSQL module specific support methods.
 #
+
 
 def set_owner(cursor, db, owner):
     query = "ALTER DATABASE %s OWNER TO %s" % (
             pg_quote_identifier(db, 'database'),
             pg_quote_identifier(owner, 'role'))
+    cursor.execute(query)
+    return True
+
+
+def set_conn_limit(cursor, db, conn_limit):
+    query = "ALTER DATABASE %s CONNECTION LIMIT %s" % (
+            pg_quote_identifier(db, 'database'),
+            conn_limit)
     cursor.execute(query)
     return True
 
@@ -172,8 +216,11 @@ def get_db_info(cursor, db):
     query = """
     SELECT rolname AS owner,
     pg_encoding_to_char(encoding) AS encoding, encoding AS encoding_id,
-    datcollate AS lc_collate, datctype AS lc_ctype
-    FROM pg_database JOIN pg_roles ON pg_roles.oid = pg_database.datdba
+    datcollate AS lc_collate, datctype AS lc_ctype, pg_database.datconnlimit AS conn_limit,
+    spcname AS tablespace
+    FROM pg_database
+    JOIN pg_roles ON pg_roles.oid = pg_database.datdba
+    JOIN pg_tablespace ON pg_tablespace.oid = pg_database.dattablespace
     WHERE datname = %(db)s
     """
     cursor.execute(query, {'db': db})
@@ -195,8 +242,8 @@ def db_delete(cursor, db):
         return False
 
 
-def db_create(cursor, db, owner, template, encoding, lc_collate, lc_ctype):
-    params = dict(enc=encoding, collate=lc_collate, ctype=lc_ctype)
+def db_create(cursor, db, owner, template, encoding, lc_collate, lc_ctype, conn_limit, tablespace):
+    params = dict(enc=encoding, collate=lc_collate, ctype=lc_ctype, conn_limit=conn_limit, tablespace=tablespace)
     if not db_exists(cursor, db):
         query_fragments = ['CREATE DATABASE %s' % pg_quote_identifier(db, 'database')]
         if owner:
@@ -209,6 +256,10 @@ def db_create(cursor, db, owner, template, encoding, lc_collate, lc_ctype):
             query_fragments.append('LC_COLLATE %(collate)s')
         if lc_ctype:
             query_fragments.append('LC_CTYPE %(ctype)s')
+        if tablespace:
+            query_fragments.append('TABLESPACE %s' % pg_quote_identifier(tablespace, 'tablespace'))
+        if conn_limit:
+            query_fragments.append("CONNECTION LIMIT %(conn_limit)s" % {"conn_limit": conn_limit})
         query = ' '.join(query_fragments)
         cursor.execute(query, params)
         return True
@@ -230,13 +281,22 @@ def db_create(cursor, db, owner, template, encoding, lc_collate, lc_ctype):
                 'Changing LC_CTYPE is not supported.'
                 'Current LC_CTYPE: %s' % db_info['lc_ctype']
             )
-        elif owner and owner != db_info['owner']:
-            return set_owner(cursor, db, owner)
         else:
-            return False
+            changed = False
+
+            if owner and owner != db_info['owner']:
+                changed = set_owner(cursor, db, owner)
+
+            if conn_limit and conn_limit != str(db_info['conn_limit']):
+                changed = set_conn_limit(cursor, db, conn_limit)
+
+            if tablespace and tablespace != db_info['tablespace']:
+                changed = set_tablespace(cursor, db, tablespace)
+
+            return changed
 
 
-def db_matches(cursor, db, owner, template, encoding, lc_collate, lc_ctype):
+def db_matches(cursor, db, owner, template, encoding, lc_collate, lc_ctype, conn_limit, tablespace):
     if not db_exists(cursor, db):
         return False
     else:
@@ -249,6 +309,10 @@ def db_matches(cursor, db, owner, template, encoding, lc_collate, lc_ctype):
         elif lc_ctype and lc_ctype != db_info['lc_ctype']:
             return False
         elif owner and owner != db_info['owner']:
+            return False
+        elif conn_limit and conn_limit != str(db_info['conn_limit']):
+            return False
+        elif tablespace and tablespace != db_info['tablespace']:
             return False
         else:
             return True
@@ -288,9 +352,9 @@ def db_dump(module, target, target_opts="",
         # in a portable way.
         fifo = os.path.join(module.tmpdir, 'pg_fifo')
         os.mkfifo(fifo)
-        cmd = '{1} <{3} > {2} & {0} >{3}'.format(cmd, comp_prog_path, pipes.quote(target), fifo)
+        cmd = '{1} <{3} > {2} & {0} >{3}'.format(cmd, comp_prog_path, shlex_quote(target), fifo)
     else:
-        cmd = '{0} > {1}'.format(cmd, pipes.quote(target))
+        cmd = '{0} > {1}'.format(cmd, shlex_quote(target))
 
     return do_with_password(module, cmd, password)
 
@@ -342,7 +406,7 @@ def db_restore(module, target, target_opts="",
         else:
             return p2.returncode, '', stderr2, 'cmd: ****'
     else:
-        cmd = '{0} < {1}'.format(cmd, pipes.quote(target))
+        cmd = '{0} < {1}'.format(cmd, shlex_quote(target))
 
     return do_with_password(module, cmd, password)
 
@@ -359,9 +423,9 @@ def login_flags(db, host, port, user, db_prefix=True):
     flags = []
     if db:
         if db_prefix:
-            flags.append(' --dbname={0}'.format(pipes.quote(db)))
+            flags.append(' --dbname={0}'.format(shlex_quote(db)))
         else:
-            flags.append(' {0}'.format(pipes.quote(db)))
+            flags.append(' {0}'.format(shlex_quote(db)))
     if host:
         flags.append(' --host={0}'.format(host))
     if port:
@@ -377,6 +441,14 @@ def do_with_password(module, cmd, password):
         env = {"PGPASSWORD": password}
     rc, stderr, stdout = module.run_command(cmd, use_unsafe_shell=True, environ_update=env)
     return rc, stderr, stdout, cmd
+
+
+def set_tablespace(cursor, db, tablespace):
+    query = "ALTER DATABASE %s SET TABLESPACE %s" % (
+            pg_quote_identifier(db, 'database'),
+            pg_quote_identifier(tablespace, 'tablespace'))
+    cursor.execute(query)
+    return True
 
 # ===========================================
 # Module execution.
@@ -397,6 +469,8 @@ def main():
         target_opts=dict(type='str', default=''),
         maintenance_db=dict(type='str', default="postgres"),
         session_role=dict(type='str'),
+        conn_limit=dict(type='str', default=''),
+        tablespace=dict(type='path', default=''),
     )
 
     module = AnsibleModule(
@@ -416,11 +490,13 @@ def main():
     changed = False
     maintenance_db = module.params['maintenance_db']
     session_role = module.params["session_role"]
+    conn_limit = module.params['conn_limit']
+    tablespace = module.params['tablespace']
 
     raw_connection = state in ("dump", "restore")
 
-    if not HAS_PSYCOPG2 and not raw_connection:
-        module.fail_json(msg=missing_required_lib('psycopg2'), exception=PSYCOPG2_IMP_ERR)
+    if not raw_connection:
+        pgutils.ensure_required_libs(module)
 
     # To use defaults values, keyword arguments must be absent, so
     # check which values are empty and don't include in the **kw
@@ -431,7 +507,7 @@ def main():
         "login_password": "password",
         "port": "port",
         "ssl_mode": "sslmode",
-        "ssl_rootcert": "sslrootcert"
+        "ca_cert": "sslrootcert"
     }
     kw = dict((params_map[k], v) for (k, v) in iteritems(module.params)
               if k in params_map and v != '' and v is not None)
@@ -448,7 +524,6 @@ def main():
 
     if not raw_connection:
         try:
-            pgutils.ensure_libs(sslrootcert=module.params.get('ssl_rootcert'))
             db_connection = psycopg2.connect(database=maintenance_db, **kw)
 
             # Enable autocommit so we can create databases
@@ -481,7 +556,7 @@ def main():
             if state == "absent":
                 changed = db_exists(cursor, db)
             elif state == "present":
-                changed = not db_matches(cursor, db, owner, template, encoding, lc_collate, lc_ctype)
+                changed = not db_matches(cursor, db, owner, template, encoding, lc_collate, lc_ctype, conn_limit, tablespace)
             module.exit_json(changed=changed, db=db)
 
         if state == "absent":
@@ -492,7 +567,7 @@ def main():
 
         elif state == "present":
             try:
-                changed = db_create(cursor, db, owner, template, encoding, lc_collate, lc_ctype)
+                changed = db_create(cursor, db, owner, template, encoding, lc_collate, lc_ctype, conn_limit, tablespace)
             except SQLParseError as e:
                 module.fail_json(msg=to_native(e), exception=traceback.format_exc())
 
@@ -501,16 +576,9 @@ def main():
             try:
                 rc, stdout, stderr, cmd = method(module, target, target_opts, db, **kw)
                 if rc != 0:
-                    module.fail_json(msg='Dump of database %s failed' % db,
-                                     stdout=stdout, stderr=stderr, rc=rc, cmd=cmd)
-
-                elif stderr and 'warning' not in str(stderr):
-                    module.fail_json(msg='Dump of database %s failed' % db,
-                                     stdout=stdout, stderr=stderr, rc=1, cmd=cmd)
-
+                    module.fail_json(msg=stderr, stdout=stdout, rc=rc, cmd=cmd)
                 else:
-                    module.exit_json(changed=True, msg='Dump of database %s has been done' % db,
-                                     stdout=stdout, stderr=stderr, rc=rc, cmd=cmd)
+                    module.exit_json(changed=True, msg=stdout, stderr=stderr, rc=rc, cmd=cmd)
             except SQLParseError as e:
                 module.fail_json(msg=to_native(e), exception=traceback.format_exc())
 

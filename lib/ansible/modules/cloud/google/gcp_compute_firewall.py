@@ -114,11 +114,9 @@ options:
     - 'Direction of traffic to which this firewall applies; default is INGRESS. Note:
       For INGRESS traffic, it is NOT supported to specify destinationRanges; For EGRESS
       traffic, it is NOT supported to specify sourceRanges OR sourceTags.'
+    - 'Some valid choices include: "INGRESS", "EGRESS"'
     required: false
     version_added: 2.8
-    choices:
-    - INGRESS
-    - EGRESS
   disabled:
     description:
     - Denotes whether the firewall rule is disabled, i.e not applied to the network
@@ -146,9 +144,10 @@ options:
       networks/my-network projects/myproject/global/networks/my-network global/networks/default
       .'
     - 'This field represents a link to a Network resource in GCP. It can be specified
-      in two ways. First, you can place in the selfLink of the resource here as a
-      string Alternatively, you can add `register: name-of-resource` to a gcp_compute_network
-      task and then set this network field to "{{ name-of-resource }}"'
+      in two ways. First, you can place a dictionary with key ''selfLink'' and value
+      of your resource''s selfLink Alternatively, you can add `register: name-of-resource`
+      to a gcp_compute_network task and then set this network field to "{{ name-of-resource
+      }}"'
     required: false
     default:
       selfLink: global/networks/default
@@ -341,7 +340,7 @@ network:
     networks/my-network projects/myproject/global/networks/my-network global/networks/default
     .'
   returned: success
-  type: str
+  type: dict
 priority:
   description:
   - Priority for this rule. This is an integer between 0 and 65535, both inclusive.
@@ -430,10 +429,10 @@ def main():
             denied=dict(type='list', elements='dict', options=dict(ip_protocol=dict(required=True, type='str'), ports=dict(type='list', elements='str'))),
             description=dict(type='str'),
             destination_ranges=dict(type='list', elements='str'),
-            direction=dict(type='str', choices=['INGRESS', 'EGRESS']),
+            direction=dict(type='str'),
             disabled=dict(type='bool'),
             name=dict(required=True, type='str'),
-            network=dict(default=dict(selfLink='global/networks/default')),
+            network=dict(default=dict(selfLink='global/networks/default'), type='dict'),
             priority=dict(default=1000, type='int'),
             source_ranges=dict(type='list', elements='str'),
             source_service_accounts=dict(type='list', elements='str'),

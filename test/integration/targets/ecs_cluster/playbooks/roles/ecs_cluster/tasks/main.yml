@@ -33,7 +33,7 @@
         <<: *aws_connection_info
 
     - name: ensure AWSServiceRoleForECS role exists
-      iam_role_facts:
+      iam_role_info:
         name: AWSServiceRoleForECS
         <<: *aws_connection_info
       register: iam_role_result
@@ -85,7 +85,7 @@
         name: '{{ resource_prefix }}_ecs_cluster'
         state: present
         <<: *aws_connection_info
-      when: ec2_keypair is not defined  # allow override in cloud-config-aws.yml
+      when: ec2_keypair is not defined  # allow override in cloud-config-aws.ini
       register: setup_key
 
     - name: create subnets
@@ -124,16 +124,16 @@
       register: setup_sg
 
     - name: find a suitable AMI
-      ec2_ami_facts:
+      ec2_ami_info:
         owner: amazon
         filters:
           description: "Amazon Linux AMI* ECS *"
         <<: *aws_connection_info
-      register: ec2_ami_facts
+      register: ec2_ami_info
 
     - name: set image id fact
       set_fact:
-        ecs_image_id: "{{ (ec2_ami_facts.images|first).image_id }}"
+        ecs_image_id: "{{ (ec2_ami_info.images|first).image_id }}"
 
     - name: provision ec2 instance to create an image
       ec2:
@@ -951,7 +951,7 @@
 #       <<: *aws_connection_info
 #     ignore_errors: yes
 
-    - name: remove fargate ECS service 
+    - name: remove fargate ECS service
       ecs_service:
         state: absent
         name: "{{ ecs_service_name }}4"

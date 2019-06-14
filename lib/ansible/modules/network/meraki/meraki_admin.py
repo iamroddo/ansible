@@ -43,10 +43,29 @@ options:
         - Tags the administrator has privileges on.
         - When creating a new administrator, C(org_name), C(network), or C(tags) must be specified.
         - If C(none) is specified, C(network) or C(tags) must be specified.
+        suboptions:
+            tag:
+                description:
+                - Object tag which privileges should be assigned.
+                type: str
+            access:
+                description:
+                - The privilege of the dashboard administrator for the tag.
+                type: str
     networks:
         description:
         - List of networks the administrator has privileges on.
         - When creating a new administrator, C(org_name), C(network), or C(tags) must be specified.
+        suboptions:
+            id:
+                description:
+                - Network ID for which administrator should have privileges assigned.
+                type: str
+            access:
+                description:
+                - The privilege of the dashboard administrator on the network.
+                - Valid options are C(full), C(read-only), or C(none).
+                type: str
     state:
         description:
         - Create or modify, or delete an organization
@@ -125,6 +144,32 @@ EXAMPLES = r'''
     org_name: YourOrg
     state: absent
     email: jane@doe.com
+
+- name: Create a new administrator with full access to two tags
+  meraki_admin:
+    auth_key: abc12345
+    org_name: YourOrg
+    state: present
+    name: Jane Doe
+    orgAccess: read-only
+    email: jane@doe.com
+    tags:
+        - tag: tenant
+          access: full
+        - tag: corporate
+          access: read-only
+
+- name: Create a new administrator with full access to a network
+  meraki_admin:
+    auth_key: abc12345
+    org_name: YourOrg
+    state: present
+    name: Jane Doe
+    orgAccess: read-only
+    email: jane@doe.com
+    networks:
+        - id: N_12345
+          access: full
 '''
 
 RETURN = r'''
@@ -148,22 +193,22 @@ data:
             returned: success
             type: str
             sample: John Doe
-        accountStatus:
+        account_status:
             description: Status of account.
             returned: success
             type: str
             sample: ok
-        twoFactorAuthEnabled:
+        two_factor_auth_enabled:
             description: Enabled state of two-factor authentication for administrator.
             returned: success
             type: bool
             sample: false
-        hasApiKey:
+        has_api_key:
             description: Defines whether administrator has an API assigned to their account.
             returned: success
             type: bool
             sample: false
-        lastActive:
+        last_active:
             description: Date and time of time the administrator was active within Dashboard.
             returned: success
             type: str
@@ -198,7 +243,7 @@ data:
                     returned: when tag permissions are set
                     type: str
                     sample: full
-        orgAccess:
+        org_access:
             description: The privilege of the dashboard administrator on the organization. Options are 'full', 'read-only', or 'none'.
             returned: success
             type: str
@@ -210,6 +255,7 @@ import os
 from ansible.module_utils.basic import AnsibleModule, json, env_fallback
 from ansible.module_utils.urls import fetch_url
 from ansible.module_utils._text import to_native
+from ansible.module_utils.common.dict_transformations import recursive_diff
 from ansible.module_utils.network.meraki.meraki import MerakiModule, meraki_argument_spec
 
 
@@ -292,9 +338,12 @@ def create_admin(meraki, org_id, name, email):
     if meraki.params['networks'] is not None:
         nets = meraki.get_nets(org_id=org_id)
         networks = network_factory(meraki, meraki.params['networks'], nets)
-        # meraki.fail_json(msg=str(type(networks)), data=networks)
         payload['networks'] = networks
     if is_admin_existing is None:  # Create new admin
+        if meraki.module.check_mode is True:
+            meraki.result['data'] = payload
+            meraki.result['changed'] = True
+            meraki.exit_json(**meraki.result)
         path = meraki.construct_path('create', function='admin', org_id=org_id)
         r = meraki.request(path,
                            method='POST',
@@ -309,7 +358,15 @@ def create_admin(meraki, org_id, name, email):
         if not meraki.params['networks']:
             payload['networks'] = []
         if meraki.is_update_required(is_admin_existing, payload) is True:
-            # meraki.fail_json(msg='Update is required!!!', original=is_admin_existing, proposed=payload)
+            if meraki.module.check_mode is True:
+                diff = recursive_diff(is_admin_existing, payload)
+                is_admin_existing.update(payload)
+                meraki.result['diff'] = {'before': diff[0],
+                                         'after': diff[1],
+                                         }
+                meraki.result['changed'] = True
+                meraki.result['data'] = payload
+                meraki.exit_json(**meraki.result)
             path = meraki.construct_path('update', function='admin', org_id=org_id) + is_admin_existing['id']
             r = meraki.request(path,
                                method='PUT',
@@ -319,7 +376,10 @@ def create_admin(meraki, org_id, name, email):
                 meraki.result['changed'] = True
                 return r
         else:
-            # meraki.fail_json(msg='No update is required!!!')
+            meraki.result['data'] = is_admin_existing
+            if meraki.module.check_mode is True:
+                meraki.result['data'] = payload
+                meraki.exit_json(**meraki.result)
             return -1
 
 
@@ -351,7 +411,7 @@ def main():
     # args/params passed to the execution, as well as if the module
     # supports check mode
     module = AnsibleModule(argument_spec=argument_spec,
-                           supports_check_mode=False,
+                           supports_check_mode=True,
                            )
     meraki = MerakiModule(module, function='admin')
 
@@ -377,16 +437,11 @@ def main():
     except KeyError:
         pass
 
-    if meraki.params['auth_key'] is None:
-        module.fail_json(msg='Meraki Dashboard API key not set')
-
     payload = None
 
     # if the user is working with this module in only check mode we do not
     # want to make any changes to the environment, just return the current
     # state with no modifications
-    if module.check_mode:
-        return result
 
     # execute checks for argument completeness
     if meraki.params['state'] == 'query':
@@ -424,6 +479,10 @@ def main():
         if r != -1:
             meraki.result['data'] = r
     elif meraki.params['state'] == 'absent':
+        if meraki.module.check_mode is True:
+            meraki.result['data'] = {}
+            meraki.result['changed'] = True
+            meraki.exit_json(**meraki.result)
         admin_id = get_admin_id(meraki,
                                 get_admins(meraki, org_id),
                                 email=meraki.params['email']
