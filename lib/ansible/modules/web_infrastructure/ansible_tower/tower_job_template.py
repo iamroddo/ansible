@@ -71,6 +71,10 @@ options:
     job_tags:
       description:
         - Comma separated list of the tags to use for the job template.
+    custom_virtualenv:
+      version_added: "2.8"
+      description:
+        - Local absolute file path containing a custom Python virtualenv to use
     force_handlers_enabled:
       description:
         - Enable forcing playbook handlers to run even if a task fails.
@@ -284,6 +288,7 @@ def main():
         job_tags=dict(default=''),
         force_handlers_enabled=dict(type='bool', default=False),
         skip_tags=dict(default=''),
+        custom_virtualenv=dict(),
         start_at_task=dict(default=''),
         timeout=dict(type='int', default=0),
         fact_caching_enabled=dict(type='bool', default=False),
@@ -309,6 +314,7 @@ def main():
 
     name = module.params.get('name')
     state = module.params.pop('state')
+    custom_virtualenv = module.params.get('custom_virtualenv')
     json_output = {'job_template': name, 'state': state}
 
     tower_auth = tower_auth_config(module)
